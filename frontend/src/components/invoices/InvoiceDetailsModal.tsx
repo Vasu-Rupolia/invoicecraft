@@ -9,6 +9,7 @@ import {
 import type { Invoice } from "../../types";
 import { useBusiness } from "../../context/BusinessContext";
 import api from "../../services/api";
+import InvoicePdfActions from "./InvoicePdfActions";
 
 type InvoiceDetailsModalProps = {
   invoice: Invoice;
@@ -400,22 +401,27 @@ export default function InvoiceDetailsModal({
         </div>
 
         {/* Modal footer */}
-        <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
-          <button
-            onClick={onClose}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Close
-          </button>
+        <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 p-5">
+            <InvoicePdfActions
+                invoice={invoice}
+                business={business}
+            />
 
-          <button
-            onClick={onEdit}
-            disabled={hasPayments}
-            title={hasPayments ? "Invoices with payments cannot be edited" : ""}
-            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Edit invoice
-          </button>
+            <button
+                onClick={onClose}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+                Close
+            </button>
+
+            <button
+                onClick={onEdit}
+                disabled={hasPayments}
+                title={hasPayments ? "Invoices with payments cannot be edited" : ""}
+                className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+                Edit invoice
+            </button>
         </div>
       </div>
     </div>
