@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\QuotationController;
 use Illuminate\Support\Facades\Route;
@@ -71,7 +72,24 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{invoiceId}', [InvoiceController::class, 'show']);
         Route::put('/{invoiceId}', [InvoiceController::class, 'update']);
         Route::delete('/{invoiceId}', [InvoiceController::class, 'destroy']);
+
+        // Invoice payments
+        Route::get(
+            '/{invoiceId}/payments',
+            [PaymentController::class, 'index']
+        );
+
+        Route::post(
+            '/{invoiceId}/payments',
+            [PaymentController::class, 'store']
+        );
     });
+
+    // Delete payment
+    Route::delete(
+        '/businesses/{businessId}/payments/{paymentId}',
+        [PaymentController::class, 'destroy']
+    );
 
     // Quotations
     Route::prefix('businesses/{businessId}/quotations')->group(function () {

@@ -133,6 +133,11 @@ export default function InvoicesPage() {
     }
   }, [businessId, search, status, page]);
 
+  const handleInvoiceUpdated = async (updatedInvoice: Invoice) => {
+    setViewingInvoice(updatedInvoice);
+    await fetchInvoices();
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -564,6 +569,7 @@ export default function InvoicesPage() {
           invoice={viewingInvoice}
           onClose={() => setViewingInvoice(null)}
           onEdit={() => openEditForm(viewingInvoice)}
+          onInvoiceUpdated={handleInvoiceUpdated}
         />
       )}
 

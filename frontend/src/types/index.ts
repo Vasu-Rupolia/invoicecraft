@@ -84,6 +84,36 @@ export type DashboardData = {
   recent_invoices: RecentInvoice[];
 };
 
+export type PaymentMethod =
+  | "cash"
+  | "upi"
+  | "bank_transfer"
+  | "card"
+  | "cheque"
+  | "other";
+
+export type Payment = {
+  id: number;
+  business_profile_id: number;
+  invoice_id: number;
+  payment_number: string | null;
+  amount: number;
+  payment_method: PaymentMethod;
+  transaction_reference: string | null;
+  payment_date: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PaymentPayload = {
+  amount: number;
+  payment_method: PaymentMethod;
+  transaction_reference: string;
+  payment_date: string;
+  notes: string;
+};
+
 export type InvoiceStatus =
   | "draft"
   | "sent"
@@ -127,12 +157,7 @@ export type Invoice = {
   notes: string | null;
   terms: string | null;
   items: InvoiceItem[];
-  payments?: {
-    id: number;
-    amount: number;
-    payment_date: string;
-    payment_method: string;
-  }[];
+  payments?: Payment[];
   created_at: string;
   updated_at: string;
 };

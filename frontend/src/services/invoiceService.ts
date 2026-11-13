@@ -1,5 +1,5 @@
 import api from "./api";
-import type { Invoice } from "../types";
+import type { Invoice, Payment, PaymentPayload } from "../types";
 
 export type InvoiceItemPayload = {
   description: string;
@@ -39,6 +39,12 @@ export type InvoiceFilters = {
   status?: string;
   page?: number;
   perPage?: number;
+};
+
+export type CreatePaymentResponse = {
+  message: string;
+  payment: Payment;
+  invoice: Invoice;
 };
 
 export async function getInvoices(
@@ -105,5 +111,40 @@ export async function deleteInvoice(
 ): Promise<void> {
   await api.delete(
     `/businesses/${businessId}/invoices/${invoiceId}`
+  );
+}
+
+// Payment APIs
+
+export async function getPayments(
+  businessId: number,
+  invoiceId: number
+): Promise<Payment[]> {
+  const response = await api.get(
+    `/businesses/${businessId}/invoices/${invoiceId}/payments`
+  );
+
+  return response.data.payments;
+}
+
+export async function createPayment(
+  businessId: number,
+  invoiceId: number,
+  payload: PaymentPayload
+): Promise<CreatePaymentResponse> {
+  const response = await api.post(
+    `/businesses/${businessId}/invoices/${invoiceId}/payments`,
+    payload
+  );
+
+  return response.data;
+}
+
+export async function deletePayment(
+  businessId: number,
+  paymentId: number
+): Promise<void> {
+  await api.delete(
+    `/businesses/${businessId}/payments/${paymentId}`
   );
 }
