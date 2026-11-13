@@ -1,6 +1,5 @@
 import {
   X,
-  Printer,
   FileText,
   UserRound,
   CalendarDays,
@@ -12,7 +11,7 @@ import {
 } from "lucide-react";
 import type { Quotation } from "../../services/quotationService";
 import { useBusiness } from "../../context/BusinessContext";
-import api from "../../services/api";
+import QuotationPdfActions from "./QuotationPdfActions";
 
 interface Props {
   quotation: Quotation | null;
@@ -24,25 +23,31 @@ interface Props {
 const money = (
   value: number | string | null | undefined,
   currency = "INR",
-) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: currency || "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(value ?? 0));
+) => {
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: currency || "INR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(value ?? 0));
+  } catch {
+    return `${currency} ${(Number(value ?? 0)).toFixed(2)}`;
+  }
+};
 
 const date = (value?: string | null) => {
   if (!value) return "—";
 
-  return new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString(
-    "en-IN",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    },
-  );
+  const dateValue = new Date(`${value.slice(0, 10)}T00:00:00`);
+
+  if (Number.isNaN(dateValue.getTime())) return "—";
+
+  return dateValue.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 };
 
 const getLogoUrl = (path?: string | null) => {
@@ -53,11 +58,14 @@ const getLogoUrl = (path?: string | null) => {
   }
 
   const normalizedPath = path.replace(/^\/+/, "");
+
   const storagePath = normalizedPath.startsWith("storage/")
     ? normalizedPath
     : `storage/${normalizedPath}`;
 
-  const apiBaseUrl = api.defaults.baseURL || window.location.origin;
+  const apiBaseUrl =
+    import.meta.env.VITE_API_URL || "http://127.0.0.1:8001/api";
+
   const backendOrigin = new URL(
     apiBaseUrl,
     window.location.origin,
@@ -87,9 +95,11 @@ export default function QuotationDetailsModal({
 
   const business = activeBusiness;
 
-  const canConvert = !["converted", "rejected", "expired"].includes(
-    quotation.status,
-  );
+  const canConvert = ![
+    "converted",
+    "rejected",
+    "expired",
+  ].includes(quotation.status);
 
   const businessAddress = [
     business?.address,
@@ -101,11 +111,9 @@ export default function QuotationDetailsModal({
     .filter(Boolean)
     .join(", ");
 
-  const logoUrl = getLogoUrl(business?.logo_path);
-
-  const handlePrint = () => {
-    window.print();
-  };
+  const logoUrl = getLogoUrl(
+    business?.logo_path || business?.logo_url,
+  );
 
   return (
     <div className="quotation-modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-950/50 p-3 backdrop-blur-sm sm:p-6">
@@ -117,32 +125,30 @@ export default function QuotationDetailsModal({
             <h2 className="text-lg font-semibold text-gray-900">
               Quotation details
             </h2>
+
             <p className="text-sm text-gray-500">
               {quotation.quotation_number}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              <Printer size={16} />
-              Print
-            </button>
+            <QuotationPdfActions
+              quotation={quotation}
+              business={business}
+            />
 
             <button
               type="button"
               onClick={onClose}
               className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+              aria-label="Close quotation details"
             >
               <X size={20} />
             </button>
           </div>
         </div>
 
-        {/* Printable quotation */}
+        {/* Quotation document */}
         <div
           id="quotation-print-area"
           className="quotation-document space-y-7 p-5 sm:p-8"
@@ -167,6 +173,7 @@ export default function QuotationDetailsModal({
                 {businessAddress && (
                   <div className="mt-2 flex items-start gap-2 text-sm leading-6 text-gray-600">
                     <MapPin size={15} className="mt-1 shrink-0" />
+
                     <p className="whitespace-pre-line">
                       {businessAddress}
                     </p>
@@ -199,6 +206,7 @@ export default function QuotationDetailsModal({
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
                 Business Document
               </p>
+
               <p className="mt-1 text-sm font-medium text-gray-500">
                 QUOTATION
               </p>
@@ -210,6 +218,7 @@ export default function QuotationDetailsModal({
             <div>
               <div className="mb-3 flex items-center gap-2 text-indigo-600">
                 <FileText size={24} />
+
                 <span className="text-sm font-bold uppercase tracking-[0.2em]">
                   Quotation
                 </span>
@@ -237,6 +246,7 @@ export default function QuotationDetailsModal({
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
                   Quotation date
                 </p>
+
                 <p className="mt-1 font-semibold text-gray-900">
                   {date(quotation.quotation_date)}
                 </p>
@@ -246,6 +256,7 @@ export default function QuotationDetailsModal({
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
                   Valid until
                 </p>
+
                 <p className="mt-1 font-semibold text-gray-900">
                   {date(quotation.valid_until)}
                 </p>
@@ -303,7 +314,10 @@ export default function QuotationDetailsModal({
               </p>
 
               <div className="mt-4 border-t border-gray-100 pt-3">
-                <p className="text-xs text-gray-500">Document number</p>
+                <p className="text-xs text-gray-500">
+                  Document number
+                </p>
+
                 <p className="mt-1 font-semibold text-gray-900">
                   {quotation.quotation_number}
                 </p>
@@ -351,6 +365,7 @@ export default function QuotationDetailsModal({
 
                       <td className="px-4 py-3 text-right text-gray-600">
                         {Number(item.tax_rate)}%
+
                         <span className="block text-xs text-gray-400">
                           {money(item.tax_amount, quotation.currency)}
                         </span>
@@ -361,6 +376,17 @@ export default function QuotationDetailsModal({
                       </td>
                     </tr>
                   ))}
+
+                  {!quotation.items?.length && (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-4 py-8 text-center text-gray-500"
+                      >
+                        No quotation items found.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -371,6 +397,7 @@ export default function QuotationDetailsModal({
             <div className="w-full max-w-sm space-y-3 rounded-xl border border-gray-200 p-5">
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Subtotal</span>
+
                 <span>
                   {money(quotation.subtotal, quotation.currency)}
                 </span>
@@ -378,6 +405,7 @@ export default function QuotationDetailsModal({
 
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Discount</span>
+
                 <span>
                   - {money(quotation.discount, quotation.currency)}
                 </span>
@@ -385,6 +413,7 @@ export default function QuotationDetailsModal({
 
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Tax</span>
+
                 <span>
                   {money(quotation.tax_amount, quotation.currency)}
                 </span>
@@ -392,6 +421,7 @@ export default function QuotationDetailsModal({
 
               <div className="flex justify-between border-t-2 border-gray-800 pt-3 text-lg font-bold text-gray-900">
                 <span>Grand Total</span>
+
                 <span>
                   {money(quotation.total, quotation.currency)}
                 </span>
@@ -431,6 +461,7 @@ export default function QuotationDetailsModal({
               <p className="text-sm font-semibold text-gray-800">
                 Authorized Signature
               </p>
+
               {business?.name && (
                 <p className="mt-1 text-xs text-gray-500">
                   For {business.name}
@@ -444,6 +475,7 @@ export default function QuotationDetailsModal({
             <p className="text-xs font-medium text-gray-600">
               {business?.name || "Thank you"}
             </p>
+
             <p className="mt-1 text-xs text-gray-500">
               Thank you for considering our quotation.
             </p>
@@ -479,116 +511,13 @@ export default function QuotationDetailsModal({
                 ) : (
                   <ArrowRightLeft size={16} />
                 )}
+
                 Convert to invoice
               </button>
             )}
           </div>
         </div>
       </div>
-
-      <style>{`
-        @page {
-          size: A4;
-          margin: 14mm;
-        }
-
-        @media print {
-          html,
-          body {
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-
-          body * {
-            visibility: hidden !important;
-          }
-
-          .quotation-modal {
-            position: static !important;
-            display: block !important;
-            overflow: visible !important;
-            background: transparent !important;
-            padding: 0 !important;
-            backdrop-filter: none !important;
-          }
-
-          .quotation-modal > div {
-            display: block !important;
-            width: 100% !important;
-            max-width: none !important;
-            margin: 0 !important;
-            overflow: visible !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
-          }
-
-          #quotation-print-area,
-          #quotation-print-area * {
-            visibility: visible !important;
-          }
-
-          #quotation-print-area {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            color: #111827 !important;
-            background: #ffffff !important;
-          }
-
-          #quotation-print-area table {
-            width: 100% !important;
-            min-width: 0 !important;
-            border-collapse: collapse !important;
-          }
-
-          #quotation-print-area thead {
-            display: table-header-group !important;
-          }
-
-          #quotation-print-area tr {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-
-          #quotation-print-area section,
-          #quotation-print-area footer {
-            break-inside: avoid;
-          }
-
-          #quotation-print-area .overflow-x-auto {
-            overflow: visible !important;
-          }
-
-          #quotation-print-area .rounded-xl {
-            border-radius: 0 !important;
-          }
-
-          #quotation-print-area .bg-gray-100 {
-            background: #f3f4f6 !important;
-          }
-
-          #quotation-print-area .text-gray-400,
-          #quotation-print-area .text-gray-500,
-          #quotation-print-area .text-gray-600 {
-            color: #4b5563 !important;
-          }
-
-          #quotation-print-area .text-gray-900 {
-            color: #111827 !important;
-          }
-
-          button,
-          .print\\:hidden {
-            display: none !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }
