@@ -17,6 +17,7 @@ class BusinessProfile extends Model
         'address',
         'city',
         'state',
+        'state_code',
         'country',
         'postal_code',
         'gstin',

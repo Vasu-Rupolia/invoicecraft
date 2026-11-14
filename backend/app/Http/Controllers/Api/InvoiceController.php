@@ -6,11 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\BusinessProfile;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Services\GstCalculationService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Carbon\Carbon;
 
 class InvoiceController extends Controller
 {
@@ -72,8 +73,38 @@ class InvoiceController extends Controller
         return $customer;
     }
 
-    private function calculateTotals(array $items, float $invoiceDiscount): array
-    {
+    private function validatePlaceOfSupply(
+        string $supplierStateCode,
+        string $placeOfSupplyStateCode
+    ): string {
+        if (!$supplierStateCode) {
+            throw ValidationException::withMessages([
+                'business_state' => [
+                    'Please configure your business state in Settings before creating an invoice.',
+                ],
+            ]);
+        }
+
+        $state = collect(config('indian_states'))
+            ->firstWhere('code', $placeOfSupplyStateCode);
+
+        if (!$state) {
+            throw ValidationException::withMessages([
+                'place_of_supply_state_code' => [
+                    'Please select a valid Place of Supply state.',
+                ],
+            ]);
+        }
+
+        return $state['name'];
+    }
+
+    private function calculateTotals(
+        array $items,
+        float $invoiceDiscount,
+        string $supplierStateCode,
+        string $placeOfSupplyStateCode
+    ): array {
         $subtotal = 0;
         $itemDiscountTotal = 0;
         $preInvoiceDiscountBases = [];
@@ -129,14 +160,20 @@ class InvoiceController extends Controller
         );
 
         $calculatedItems = [];
+
         $taxAmount = 0;
+        $cgstAmount = 0;
+        $sgstAmount = 0;
+        $igstAmount = 0;
+
         $distributedDiscount = 0;
         $lastIndex = count($items) - 1;
+
+        $gstService = app(GstCalculationService::class);
 
         foreach ($items as $index => $item) {
             $base = $preInvoiceDiscountBases[$index];
 
-            // Distribute invoice-level discount proportionally.
             if ($index === $lastIndex) {
                 $allocatedDiscount = round(
                     $invoiceDiscount - $distributedDiscount,
@@ -160,17 +197,22 @@ class InvoiceController extends Controller
 
             $rate = (float) ($item['tax_rate'] ?? 0);
 
-            $itemTax = round(
-                $taxableAmount * $rate / 100,
-                2
+            $gst = $gstService->calculate(
+                $taxableAmount,
+                $rate,
+                $supplierStateCode,
+                $placeOfSupplyStateCode
             );
 
             $lineTotal = round(
-                $taxableAmount + $itemTax,
+                $taxableAmount + $gst['tax_amount'],
                 2
             );
 
-            $taxAmount += $itemTax;
+            $taxAmount += $gst['tax_amount'];
+            $cgstAmount += $gst['cgst_amount'];
+            $sgstAmount += $gst['sgst_amount'];
+            $igstAmount += $gst['igst_amount'];
 
             $calculatedItems[] = [
                 'description' => $item['description'],
@@ -179,12 +221,18 @@ class InvoiceController extends Controller
                 'unit_price' => $item['unit_price'],
                 'discount' => $item['discount'] ?? 0,
                 'tax_rate' => $rate,
-                'tax_amount' => $itemTax,
+                'tax_amount' => $gst['tax_amount'],
+                'cgst_amount' => $gst['cgst_amount'],
+                'sgst_amount' => $gst['sgst_amount'],
+                'igst_amount' => $gst['igst_amount'],
                 'line_total' => $lineTotal,
             ];
         }
 
         $taxAmount = round($taxAmount, 2);
+        $cgstAmount = round($cgstAmount, 2);
+        $sgstAmount = round($sgstAmount, 2);
+        $igstAmount = round($igstAmount, 2);
 
         $total = round(
             $remainingTaxableAmount + $taxAmount,
@@ -195,6 +243,12 @@ class InvoiceController extends Controller
             'subtotal' => $subtotal,
             'discount' => $totalDiscount,
             'tax_amount' => $taxAmount,
+            'cgst_amount' => $cgstAmount,
+            'sgst_amount' => $sgstAmount,
+            'igst_amount' => $igstAmount,
+            'tax_type' => $supplierStateCode === $placeOfSupplyStateCode
+                ? 'cgst_sgst'
+                : 'igst',
             'total' => $total,
             'items' => $calculatedItems,
         ];
@@ -272,7 +326,7 @@ class InvoiceController extends Controller
         ]);
 
         $query = Invoice::where('business_profile_id', $businessId)
-            ->with('items:id,invoice_id,description,quantity,unit,unit_price,discount,tax_rate,tax_amount,line_total');
+            ->with('items:id,invoice_id,description,quantity,unit,unit_price,discount,tax_rate,tax_amount,cgst_amount,sgst_amount,igst_amount,line_total');
 
         if (!empty($validated['search'])) {
             $search = trim($validated['search']);
@@ -286,11 +340,7 @@ class InvoiceController extends Controller
         }
 
         if (!empty($validated['status'])) {
-            if ($validated['status'] === 'overdue') {
-                $query->where('status', 'overdue');
-            } else {
-                $query->where('status', $validated['status']);
-            }
+            $query->where('status', $validated['status']);
         }
 
         if (!empty($validated['from_date'])) {
@@ -343,6 +393,12 @@ class InvoiceController extends Controller
                 'regex:/^[0-9A-Z]{15}$/i',
             ],
             'billing_address' => ['nullable', 'string', 'max:5000'],
+            'place_of_supply_state_code' => [
+                'required',
+                'string',
+                'size:2',
+                Rule::in(array_column(config('indian_states'), 'code')),
+            ],
 
             'invoice_date' => ['required', 'date'],
             'due_date' => [
@@ -371,18 +427,21 @@ class InvoiceController extends Controller
             'terms' => ['nullable', 'string', 'max:10000'],
         ]);
 
-        $business = null;
-
         $invoice = DB::transaction(function () use (
-            $request,
             $businessId,
-            $validated,
-            &$business
+            $validated
         ) {
             // Lock business row to prevent duplicate invoice numbers.
             $business = BusinessProfile::where('id', $businessId)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            $placeOfSupplyStateCode = $validated['place_of_supply_state_code'];
+
+            $placeOfSupplyState = $this->validatePlaceOfSupply(
+                (string) $business->state_code,
+                $placeOfSupplyStateCode
+            );
 
             $customer = $this->validateCustomer(
                 $businessId,
@@ -391,7 +450,9 @@ class InvoiceController extends Controller
 
             $totals = $this->calculateTotals(
                 $validated['items'],
-                (float) ($validated['discount'] ?? 0)
+                (float) ($validated['discount'] ?? 0),
+                $business->state_code,
+                $placeOfSupplyStateCode
             );
 
             $invoiceNumber = $this->generateInvoiceNumber($business);
@@ -422,6 +483,12 @@ class InvoiceController extends Controller
                 'subtotal' => $totals['subtotal'],
                 'discount' => $totals['discount'],
                 'tax_amount' => $totals['tax_amount'],
+                'cgst_amount' => $totals['cgst_amount'],
+                'sgst_amount' => $totals['sgst_amount'],
+                'igst_amount' => $totals['igst_amount'],
+                'tax_type' => $totals['tax_type'],
+                'place_of_supply_state' => $placeOfSupplyState,
+                'place_of_supply_state_code' => $placeOfSupplyStateCode,
                 'total' => $totals['total'],
                 'amount_paid' => 0,
                 'balance_due' => $totals['total'],
@@ -472,7 +539,7 @@ class InvoiceController extends Controller
         int $businessId,
         int $invoiceId
     ) {
-        $this->getBusiness($request, $businessId);
+        $business = $this->getBusiness($request, $businessId);
 
         $validated = $request->validate([
             'customer_id' => ['nullable', 'integer'],
@@ -491,6 +558,12 @@ class InvoiceController extends Controller
                 'regex:/^[0-9A-Z]{15}$/i',
             ],
             'billing_address' => ['nullable', 'string', 'max:5000'],
+            'place_of_supply_state_code' => [
+                'required',
+                'string',
+                'size:2',
+                Rule::in(array_column(config('indian_states'), 'code')),
+            ],
 
             'invoice_date' => ['required', 'date'],
             'due_date' => [
@@ -520,6 +593,7 @@ class InvoiceController extends Controller
         ]);
 
         $invoice = DB::transaction(function () use (
+            $business,
             $businessId,
             $invoiceId,
             $validated
@@ -537,6 +611,13 @@ class InvoiceController extends Controller
                 ]);
             }
 
+            $placeOfSupplyStateCode = $validated['place_of_supply_state_code'];
+
+            $placeOfSupplyState = $this->validatePlaceOfSupply(
+                (string) $business->state_code,
+                $placeOfSupplyStateCode
+            );
+
             $customer = $this->validateCustomer(
                 $businessId,
                 $validated['customer_id'] ?? null
@@ -544,7 +625,9 @@ class InvoiceController extends Controller
 
             $totals = $this->calculateTotals(
                 $validated['items'],
-                (float) ($validated['discount'] ?? 0)
+                (float) ($validated['discount'] ?? 0),
+                $business->state_code,
+                $placeOfSupplyStateCode
             );
 
             $invoice->update([
@@ -571,6 +654,12 @@ class InvoiceController extends Controller
                 'subtotal' => $totals['subtotal'],
                 'discount' => $totals['discount'],
                 'tax_amount' => $totals['tax_amount'],
+                'cgst_amount' => $totals['cgst_amount'],
+                'sgst_amount' => $totals['sgst_amount'],
+                'igst_amount' => $totals['igst_amount'],
+                'tax_type' => $totals['tax_type'],
+                'place_of_supply_state' => $placeOfSupplyState,
+                'place_of_supply_state_code' => $placeOfSupplyStateCode,
                 'total' => $totals['total'],
                 'amount_paid' => 0,
                 'balance_due' => $totals['total'],

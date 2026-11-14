@@ -27,6 +27,46 @@ type InvoiceDetailsModalProps = {
   onInvoiceUpdated: (updatedInvoice: Invoice) => Promise<void>;
 };
 
+const INDIAN_STATES: Record<string, string> = {
+  "01": "Jammu and Kashmir",
+  "02": "Himachal Pradesh",
+  "03": "Punjab",
+  "04": "Chandigarh",
+  "05": "Uttarakhand",
+  "06": "Haryana",
+  "07": "Delhi",
+  "08": "Rajasthan",
+  "09": "Uttar Pradesh",
+  "10": "Bihar",
+  "11": "Sikkim",
+  "12": "Arunachal Pradesh",
+  "13": "Nagaland",
+  "14": "Manipur",
+  "15": "Mizoram",
+  "16": "Tripura",
+  "17": "Meghalaya",
+  "18": "Assam",
+  "19": "West Bengal",
+  "20": "Jharkhand",
+  "21": "Odisha",
+  "22": "Chhattisgarh",
+  "23": "Madhya Pradesh",
+  "24": "Gujarat",
+  "26": "Dadra and Nagar Haveli and Daman and Diu",
+  "27": "Maharashtra",
+  "28": "Andhra Pradesh",
+  "29": "Karnataka",
+  "30": "Goa",
+  "31": "Lakshadweep",
+  "32": "Kerala",
+  "33": "Tamil Nadu",
+  "34": "Puducherry",
+  "35": "Andaman and Nicobar Islands",
+  "36": "Telangana",
+  "37": "Andhra Pradesh",
+  "38": "Ladakh",
+};
+
 const money = (value: number, currency: string) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -100,6 +140,23 @@ export default function InvoiceDetailsModal({
   const hasPayments = payments.length > 0;
   const outstanding = Number(invoice.balance_due || 0);
 
+  const cgstAmount = Number(invoice.cgst_amount || 0);
+  const sgstAmount = Number(invoice.sgst_amount || 0);
+  const igstAmount = Number(invoice.igst_amount || 0);
+  const totalGst = Number(invoice.tax_amount || 0);
+
+  const placeOfSupply =
+    invoice.place_of_supply_state ||
+    INDIAN_STATES[invoice.place_of_supply_state_code || ""] ||
+    "—";
+
+  const taxType =
+    invoice.tax_type === "igst"
+      ? "Inter-state supply"
+      : invoice.tax_type === "cgst_sgst"
+        ? "Intra-state supply"
+        : "—";
+
   const businessAddress = [
     business?.address,
     business?.city,
@@ -150,8 +207,7 @@ export default function InvoiceDetailsModal({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-5">
-        <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-          {/* Modal header */}
+        <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
           <div className="flex items-start justify-between border-b border-slate-100 p-5 sm:p-6">
             <div>
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
@@ -284,7 +340,7 @@ export default function InvoiceDetailsModal({
               <div className="rounded-xl bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                   <CalendarDays className="h-4 w-4 text-indigo-500" />
-                  Invoice dates
+                  Invoice details
                 </div>
 
                 <div className="mt-4 space-y-3">
@@ -301,6 +357,31 @@ export default function InvoiceDetailsModal({
                       {date(invoice.due_date)}
                     </span>
                   </div>
+
+                  <div className="border-t border-slate-200 pt-3">
+                    <div className="flex justify-between gap-3 text-sm">
+                      <span className="text-slate-500">Place of Supply</span>
+                      <span className="text-right font-semibold text-slate-800">
+                        {placeOfSupply}
+                        {invoice.place_of_supply_state_code
+                          ? ` (${invoice.place_of_supply_state_code})`
+                          : ""}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex justify-between gap-3 text-sm">
+                      <span className="text-slate-500">Supply type</span>
+                      <span
+                        className={`font-semibold ${
+                          invoice.tax_type === "igst"
+                            ? "text-orange-700"
+                            : "text-indigo-700"
+                        }`}
+                      >
+                        {taxType}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -312,7 +393,7 @@ export default function InvoiceDetailsModal({
               </h3>
 
               <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[620px] text-left">
+                <table className="w-full min-w-[850px] text-left">
                   <thead className="bg-slate-50">
                     <tr>
                       {[
@@ -320,7 +401,10 @@ export default function InvoiceDetailsModal({
                         "Qty",
                         "Price",
                         "Discount",
-                        "GST",
+                        "GST %",
+                        "CGST",
+                        "SGST",
+                        "IGST",
                         "Amount",
                       ].map((heading) => (
                         <th
@@ -351,6 +435,15 @@ export default function InvoiceDetailsModal({
                         <td className="px-3 py-3 text-sm text-slate-600">
                           {Number(item.tax_rate)}%
                         </td>
+                        <td className="px-3 py-3 text-sm text-slate-600">
+                          {money(Number(item.cgst_amount || 0), invoice.currency)}
+                        </td>
+                        <td className="px-3 py-3 text-sm text-slate-600">
+                          {money(Number(item.sgst_amount || 0), invoice.currency)}
+                        </td>
+                        <td className="px-3 py-3 text-sm text-slate-600">
+                          {money(Number(item.igst_amount || 0), invoice.currency)}
+                        </td>
                         <td className="px-3 py-3 text-sm font-semibold text-slate-800">
                           {money(Number(item.line_total), invoice.currency)}
                         </td>
@@ -361,7 +454,7 @@ export default function InvoiceDetailsModal({
               </div>
             </section>
 
-            {/* Totals */}
+            {/* GST summary and totals */}
             <section className="flex justify-end">
               <div className="w-full max-w-sm space-y-3 rounded-xl bg-slate-50 p-4">
                 <div className="flex justify-between text-sm">
@@ -378,15 +471,46 @@ export default function InvoiceDetailsModal({
                   </span>
                 </div>
 
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">GST</span>
-                  <span className="font-medium text-slate-800">
-                    {money(Number(invoice.tax_amount), invoice.currency)}
-                  </span>
+                <div className="border-t border-slate-200 pt-3">
+                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                    GST breakup
+                  </p>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">CGST</span>
+                      <span className="font-medium text-slate-800">
+                        {money(cgstAmount, invoice.currency)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">SGST</span>
+                      <span className="font-medium text-slate-800">
+                        {money(sgstAmount, invoice.currency)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">IGST</span>
+                      <span className="font-medium text-slate-800">
+                        {money(igstAmount, invoice.currency)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between border-t border-slate-200 pt-3 text-sm">
+                      <span className="font-semibold text-slate-700">
+                        Total GST
+                      </span>
+                      <span className="font-semibold text-slate-900">
+                        {money(totalGst, invoice.currency)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex justify-between border-t border-slate-200 pt-3">
-                  <span className="font-semibold text-slate-900">Total</span>
+                  <span className="font-semibold text-slate-900">Grand Total</span>
                   <span className="text-lg font-bold text-indigo-700">
                     {money(Number(invoice.total), invoice.currency)}
                   </span>
@@ -567,7 +691,6 @@ export default function InvoiceDetailsModal({
             </footer>
           </div>
 
-          {/* Modal footer */}
           <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 p-5">
             <InvoicePdfActions invoice={invoice} business={business} />
 
@@ -594,7 +717,6 @@ export default function InvoiceDetailsModal({
         </div>
       </div>
 
-      {/* Record payment modal */}
       {showRecordPayment && businessId > 0 && (
         <RecordPaymentModal
           businessId={businessId}
@@ -604,7 +726,6 @@ export default function InvoiceDetailsModal({
         />
       )}
 
-      {/* Delete payment confirmation */}
       {paymentToDelete && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-2xl">

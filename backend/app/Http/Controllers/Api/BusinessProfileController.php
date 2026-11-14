@@ -7,6 +7,8 @@ use App\Models\BusinessProfile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class BusinessProfileController extends Controller
 {
@@ -49,9 +51,20 @@ class BusinessProfileController extends Controller
             'address' => ['nullable', 'string'],
             'city' => ['nullable', 'string', 'max:100'],
             'state' => ['nullable', 'string', 'max:100'],
+            'state_code' => [
+                'required',
+                'string',
+                'size:2',
+                Rule::in(array_column(config('indian_states'), 'code')),
+            ],
             'country' => ['nullable', 'string', 'max:100'],
             'postal_code' => ['nullable', 'string', 'max:20'],
-            'gstin' => ['nullable', 'string', 'size:15'],
+            'gstin' => [
+                'nullable',
+                'string',
+                'size:15',
+                'regex:/^[0-9A-Z]{15}$/i',
+            ],
             'currency' => ['nullable', 'string', 'size:3'],
             'timezone' => ['nullable', 'string', 'max:100'],
             'invoice_prefix' => ['nullable', 'string', 'max:20'],
@@ -63,6 +76,36 @@ class BusinessProfileController extends Controller
                 'max:4096',
             ],
         ]);
+
+        $state = collect(config('indian_states'))
+            ->firstWhere('code', $data['state_code']);
+
+        if (!$state) {
+            throw ValidationException::withMessages([
+                'state_code' => [
+                    'Please select a valid Indian state.',
+                ],
+            ]);
+        }
+
+        if (!empty($data['gstin'])) {
+            $gstinStateCode = substr(
+                strtoupper($data['gstin']),
+                0,
+                2
+            );
+
+            if ($gstinStateCode !== $data['state_code']) {
+                throw ValidationException::withMessages([
+                    'gstin' => [
+                        'The GSTIN state code does not match the selected business state.',
+                    ],
+                ]);
+            }
+        }
+
+        $data['state'] = $state['name'];
+        $data['country'] = $data['country'] ?? 'India';
 
         unset($data['logo']);
 

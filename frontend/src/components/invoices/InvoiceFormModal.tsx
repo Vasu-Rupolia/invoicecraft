@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { Customer, Invoice } from "../../types";
 import type { InvoicePayload } from "../../services/invoiceService";
+import { useBusiness } from "../../context/BusinessContext";
 
 type InvoiceFormModalProps = {
   invoice: Invoice | null;
@@ -30,6 +31,46 @@ type FormItem = {
   tax_rate: string;
 };
 
+const INDIAN_STATES = [
+  { code: "01", name: "Jammu and Kashmir" },
+  { code: "02", name: "Himachal Pradesh" },
+  { code: "03", name: "Punjab" },
+  { code: "04", name: "Chandigarh" },
+  { code: "05", name: "Uttarakhand" },
+  { code: "06", name: "Haryana" },
+  { code: "07", name: "Delhi" },
+  { code: "08", name: "Rajasthan" },
+  { code: "09", name: "Uttar Pradesh" },
+  { code: "10", name: "Bihar" },
+  { code: "11", name: "Sikkim" },
+  { code: "12", name: "Arunachal Pradesh" },
+  { code: "13", name: "Nagaland" },
+  { code: "14", name: "Manipur" },
+  { code: "15", name: "Mizoram" },
+  { code: "16", name: "Tripura" },
+  { code: "17", name: "Meghalaya" },
+  { code: "18", name: "Assam" },
+  { code: "19", name: "West Bengal" },
+  { code: "20", name: "Jharkhand" },
+  { code: "21", name: "Odisha" },
+  { code: "22", name: "Chhattisgarh" },
+  { code: "23", name: "Madhya Pradesh" },
+  { code: "24", name: "Gujarat" },
+  { code: "26", name: "Dadra and Nagar Haveli and Daman and Diu" },
+  { code: "27", name: "Maharashtra" },
+  { code: "28", name: "Andhra Pradesh" },
+  { code: "29", name: "Karnataka" },
+  { code: "30", name: "Goa" },
+  { code: "31", name: "Lakshadweep" },
+  { code: "32", name: "Kerala" },
+  { code: "33", name: "Tamil Nadu" },
+  { code: "34", name: "Puducherry" },
+  { code: "35", name: "Andaman and Nicobar Islands" },
+  { code: "36", name: "Telangana" },
+  { code: "37", name: "Andhra Pradesh (New)" },
+  { code: "38", name: "Ladakh" },
+];
+
 const today = () => {
   const date = new Date();
   const localDate = new Date(
@@ -46,6 +87,9 @@ const emptyItem = (): FormItem => ({
   discount: "0",
   tax_rate: "18",
 });
+
+const roundMoney = (value: number) =>
+  Math.round((value + Number.EPSILON) * 100) / 100;
 
 const money = (value: number, currency: string) =>
   new Intl.NumberFormat("en-IN", {
@@ -64,12 +108,17 @@ export default function InvoiceFormModal({
   onClose,
   onSave,
 }: InvoiceFormModalProps) {
+  const { activeBusiness } = useBusiness();
+
+  const supplierStateCode = activeBusiness?.state_code || "";
+
   const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerGstin, setCustomerGstin] = useState("");
   const [billingAddress, setBillingAddress] = useState("");
+  const [placeOfSupplyStateCode, setPlaceOfSupplyStateCode] = useState("");
 
   const [invoiceDate, setInvoiceDate] = useState(today());
   const [dueDate, setDueDate] = useState("");
@@ -88,6 +137,9 @@ export default function InvoiceFormModal({
       setCustomerPhone(invoice.customer_phone || "");
       setCustomerGstin(invoice.customer_gstin || "");
       setBillingAddress(invoice.billing_address || "");
+      setPlaceOfSupplyStateCode(
+        invoice.place_of_supply_state_code || ""
+      );
       setInvoiceDate(invoice.invoice_date?.slice(0, 10) || today());
       setDueDate(invoice.due_date?.slice(0, 10) || "");
       setInvoiceDiscount(
@@ -124,6 +176,7 @@ export default function InvoiceFormModal({
       setCustomerPhone("");
       setCustomerGstin("");
       setBillingAddress("");
+      setPlaceOfSupplyStateCode("");
       setInvoiceDate(today());
       setDueDate("");
       setInvoiceDiscount("0");
@@ -140,6 +193,31 @@ export default function InvoiceFormModal({
     (customer) => String(customer.id) === customerId
   );
 
+  const selectedSupplierState = INDIAN_STATES.find(
+    (state) => state.code === supplierStateCode
+  );
+
+  const selectedPlaceOfSupplyState = INDIAN_STATES.find(
+    (state) => state.code === placeOfSupplyStateCode
+  );
+
+  const isGstConfigured = Boolean(
+    supplierStateCode &&
+      placeOfSupplyStateCode &&
+      selectedSupplierState &&
+      selectedPlaceOfSupplyState
+  );
+
+  const isIntraState =
+    isGstConfigured &&
+    supplierStateCode === placeOfSupplyStateCode;
+
+  const taxType = isGstConfigured
+    ? isIntraState
+      ? "cgst_sgst"
+      : "igst"
+    : null;
+
   const handleCustomerChange = (value: string) => {
     setCustomerId(value);
 
@@ -153,12 +231,14 @@ export default function InvoiceFormModal({
       setCustomerPhone(selected.phone || "");
       setCustomerGstin(selected.gstin || "");
       setBillingAddress(selected.billing_address || "");
+      setPlaceOfSupplyStateCode(selected.state_code || "");
     } else {
       setCustomerName("");
       setCustomerEmail("");
       setCustomerPhone("");
       setCustomerGstin("");
       setBillingAddress("");
+      setPlaceOfSupplyStateCode("");
     }
   };
 
@@ -182,6 +262,7 @@ export default function InvoiceFormModal({
       const price = Math.max(0, Number(item.unit_price) || 0);
       const discount = Math.max(0, Number(item.discount) || 0);
       const taxRate = Math.max(0, Number(item.tax_rate) || 0);
+
       const gross = quantity * price;
       const itemDiscount = Math.min(discount, gross);
       const taxable = Math.max(0, gross - itemDiscount);
@@ -205,6 +286,7 @@ export default function InvoiceFormModal({
     );
 
     const taxableSubtotal = Math.max(0, subtotal - itemDiscounts);
+
     const discount = Math.min(
       Math.max(0, Number(invoiceDiscount) || 0),
       taxableSubtotal
@@ -212,7 +294,7 @@ export default function InvoiceFormModal({
 
     let distributedDiscount = 0;
 
-    const taxAmount = calculatedItems.reduce((sum, item, index) => {
+    const itemsWithGst = calculatedItems.map((item, index) => {
       const allocated =
         index === calculatedItems.length - 1
           ? discount - distributedDiscount
@@ -224,20 +306,71 @@ export default function InvoiceFormModal({
         distributedDiscount += allocated;
       }
 
-      const taxable = Math.max(0, item.taxable - allocated);
-      return sum + taxable * (item.taxRate / 100);
-    }, 0);
+      const taxableAfterDiscount = Math.max(
+        0,
+        item.taxable - allocated
+      );
 
-    const total = taxableSubtotal - discount + taxAmount;
+      const gstAmount = roundMoney(
+        taxableAfterDiscount * (item.taxRate / 100)
+      );
+
+      let cgstAmount = 0;
+      let sgstAmount = 0;
+      let igstAmount = 0;
+
+      if (taxType === "cgst_sgst") {
+        cgstAmount = roundMoney(gstAmount / 2);
+        sgstAmount = roundMoney(gstAmount - cgstAmount);
+      } else if (taxType === "igst") {
+        igstAmount = gstAmount;
+      }
+
+      return {
+        ...item,
+        allocatedInvoiceDiscount: allocated,
+        taxableAfterDiscount,
+        gstAmount,
+        cgstAmount,
+        sgstAmount,
+        igstAmount,
+        lineTotal: taxableAfterDiscount + gstAmount,
+      };
+    });
+
+    const cgstAmount = roundMoney(
+      itemsWithGst.reduce((sum, item) => sum + item.cgstAmount, 0)
+    );
+
+    const sgstAmount = roundMoney(
+      itemsWithGst.reduce((sum, item) => sum + item.sgstAmount, 0)
+    );
+
+    const igstAmount = roundMoney(
+      itemsWithGst.reduce((sum, item) => sum + item.igstAmount, 0)
+    );
+
+    const taxAmount = roundMoney(
+      itemsWithGst.reduce((sum, item) => sum + item.gstAmount, 0)
+    );
+
+    const total = roundMoney(
+      taxableSubtotal - discount + taxAmount
+    );
 
     return {
+      items: itemsWithGst,
       subtotal,
       itemDiscounts,
       discount,
+      taxableSubtotal,
+      cgstAmount,
+      sgstAmount,
+      igstAmount,
       taxAmount,
       total,
     };
-  }, [items, invoiceDiscount]);
+  }, [items, invoiceDiscount, taxType]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -250,6 +383,27 @@ export default function InvoiceFormModal({
 
     if (!customerId && !customerName.trim()) {
       setLocalError("Please select a customer or enter a customer name.");
+      return;
+    }
+
+    if (!placeOfSupplyStateCode) {
+      setLocalError("Please select the Place of Supply state.");
+      return;
+    }
+
+    if (
+      !INDIAN_STATES.some(
+        (state) => state.code === placeOfSupplyStateCode
+      )
+    ) {
+      setLocalError("Please select a valid Place of Supply state.");
+      return;
+    }
+
+    if (!supplierStateCode || !selectedSupplierState) {
+      setLocalError(
+        "Please configure your business state in Business Settings before creating an invoice."
+      );
       return;
     }
 
@@ -271,7 +425,9 @@ export default function InvoiceFormModal({
       }
 
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        setLocalError(`Quantity for item ${index + 1} must be greater than zero.`);
+        setLocalError(
+          `Quantity for item ${index + 1} must be greater than zero.`
+        );
         return;
       }
 
@@ -281,13 +437,27 @@ export default function InvoiceFormModal({
       }
 
       if (!Number.isFinite(discount) || discount < 0 || discount > gross) {
-        setLocalError(`Discount for item ${index + 1} cannot exceed its amount.`);
+        setLocalError(
+          `Discount for item ${index + 1} cannot exceed its amount.`
+        );
+        return;
+      }
+
+      const taxRate = Number(item.tax_rate);
+
+      if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+        setLocalError(`Enter a valid GST rate for item ${index + 1}.`);
         return;
       }
     }
 
-    if (Number(invoiceDiscount) > calculations.subtotal - calculations.itemDiscounts) {
-      setLocalError("Invoice discount cannot exceed the amount after item discounts.");
+    if (
+      Number(invoiceDiscount) >
+      calculations.subtotal - calculations.itemDiscounts
+    ) {
+      setLocalError(
+        "Invoice discount cannot exceed the amount after item discounts."
+      );
       return;
     }
 
@@ -298,6 +468,7 @@ export default function InvoiceFormModal({
       customer_phone: customerPhone.trim(),
       customer_gstin: customerGstin.trim().toUpperCase(),
       billing_address: billingAddress.trim(),
+      place_of_supply_state_code: placeOfSupplyStateCode,
       invoice_date: invoiceDate,
       due_date: dueDate,
       discount: Number(invoiceDiscount) || 0,
@@ -451,6 +622,7 @@ export default function InvoiceFormModal({
                   />
                 </div>
               </div>
+
               {customerId && (
                 <p className="mt-2 text-xs text-slate-500">
                   Customer details are taken from the selected customer record.
@@ -464,7 +636,7 @@ export default function InvoiceFormModal({
                 Invoice details
               </h3>
 
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className={labelClass}>Invoice date *</label>
                   <input
@@ -500,6 +672,75 @@ export default function InvoiceFormModal({
                     <option value="sent">Sent</option>
                   </select>
                 </div>
+
+                <div>
+                  <label className={labelClass}>Place of Supply *</label>
+                  <select
+                    required
+                    value={placeOfSupplyStateCode}
+                    onChange={(e) =>
+                      setPlaceOfSupplyStateCode(e.target.value)
+                    }
+                    className={inputClass}
+                  >
+                    <option value="">Select state</option>
+                    {INDIAN_STATES.map((state) => (
+                      <option key={state.code} value={state.code}>
+                        {state.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    Select the state where the supply is taxable.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
+                <h4 className="text-sm font-semibold text-slate-900">
+                  GST calculation type
+                </h4>
+
+                {isGstConfigured ? (
+                  <>
+                    <p className="mt-2 text-sm text-slate-700">
+                      Supplier state:{" "}
+                      <strong>{selectedSupplierState?.name}</strong>
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      Place of Supply:{" "}
+                      <strong>{selectedPlaceOfSupplyState?.name}</strong>
+                    </p>
+
+                    <div className="mt-3 rounded-lg bg-white px-3 py-3">
+                      {isIntraState ? (
+                        <>
+                          <p className="text-sm font-semibold text-emerald-700">
+                            Intra-state supply
+                          </p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            GST will be divided into CGST + SGST.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-semibold text-blue-700">
+                            Inter-state supply
+                          </p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            GST will be charged as IGST.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-amber-700">
+                    Business state code or Place of Supply is missing. Configure
+                    your business state in Settings and select Place of Supply
+                    to see the GST breakup.
+                  </p>
+                )}
               </div>
             </section>
 
@@ -520,137 +761,211 @@ export default function InvoiceFormModal({
               </div>
 
               <div className="space-y-4">
-                {items.map((item, index) => (
-                  <div
-                    key={index}
-                    className="rounded-xl border border-slate-200 p-4"
-                  >
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Item {index + 1}
-                      </p>
+                {items.map((item, index) => {
+                  const calculatedItem = calculations.items[index];
 
-                      <button
-                        type="button"
-                        disabled={items.length === 1}
-                        onClick={() =>
-                          setItems((current) =>
-                            current.filter((_, itemIndex) => itemIndex !== index)
-                          )
-                        }
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
-                        title="Remove item"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                  return (
+                    <div
+                      key={index}
+                      className="rounded-xl border border-slate-200 p-4"
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Item {index + 1}
+                        </p>
 
-                    <div className="grid gap-3 sm:grid-cols-12">
-                      <div className="sm:col-span-12">
-                        <label className={labelClass}>Description *</label>
-                        <input
-                          required
-                          maxLength={255}
-                          value={item.description}
-                          onChange={(e) =>
-                            updateItem(index, "description", e.target.value)
+                        <button
+                          type="button"
+                          disabled={items.length === 1}
+                          onClick={() =>
+                            setItems((current) =>
+                              current.filter((_, itemIndex) => itemIndex !== index)
+                            )
                           }
-                          placeholder="Product or service description"
-                          className={inputClass}
-                        />
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+                          title="Remove item"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
 
-                      <div className="sm:col-span-2">
-                        <label className={labelClass}>Quantity</label>
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={item.quantity}
-                          onChange={(e) =>
-                            updateItem(index, "quantity", e.target.value)
-                          }
-                          className={inputClass}
-                        />
-                      </div>
+                      <div className="grid gap-3 sm:grid-cols-12">
+                        <div className="sm:col-span-12">
+                          <label className={labelClass}>Description *</label>
+                          <input
+                            required
+                            maxLength={255}
+                            value={item.description}
+                            onChange={(e) =>
+                              updateItem(index, "description", e.target.value)
+                            }
+                            placeholder="Product or service description"
+                            className={inputClass}
+                          />
+                        </div>
 
-                      <div className="sm:col-span-2">
-                        <label className={labelClass}>Unit</label>
-                        <input
-                          maxLength={30}
-                          value={item.unit}
-                          onChange={(e) =>
-                            updateItem(index, "unit", e.target.value)
-                          }
-                          placeholder="unit"
-                          className={inputClass}
-                        />
-                      </div>
+                        <div className="sm:col-span-2">
+                          <label className={labelClass}>Quantity</label>
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={item.quantity}
+                            onChange={(e) =>
+                              updateItem(index, "quantity", e.target.value)
+                            }
+                            className={inputClass}
+                          />
+                        </div>
 
-                      <div className="sm:col-span-2">
-                        <label className={labelClass}>Unit price</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.unit_price}
-                          onChange={(e) =>
-                            updateItem(index, "unit_price", e.target.value)
-                          }
-                          className={inputClass}
-                        />
-                      </div>
+                        <div className="sm:col-span-2">
+                          <label className={labelClass}>Unit</label>
+                          <input
+                            maxLength={30}
+                            value={item.unit}
+                            onChange={(e) =>
+                              updateItem(index, "unit", e.target.value)
+                            }
+                            placeholder="unit"
+                            className={inputClass}
+                          />
+                        </div>
 
-                      <div className="sm:col-span-2">
-                        <label className={labelClass}>Discount</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.discount}
-                          onChange={(e) =>
-                            updateItem(index, "discount", e.target.value)
-                          }
-                          className={inputClass}
-                        />
-                      </div>
+                        <div className="sm:col-span-2">
+                          <label className={labelClass}>Unit price</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unit_price}
+                            onChange={(e) =>
+                              updateItem(index, "unit_price", e.target.value)
+                            }
+                            className={inputClass}
+                          />
+                        </div>
 
-                      <div className="sm:col-span-2">
-                        <label className={labelClass}>GST %</label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.01"
-                          value={item.tax_rate}
-                          onChange={(e) =>
-                            updateItem(index, "tax_rate", e.target.value)
-                          }
-                          className={inputClass}
-                        />
-                      </div>
+                        <div className="sm:col-span-2">
+                          <label className={labelClass}>Discount</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.discount}
+                            onChange={(e) =>
+                              updateItem(index, "discount", e.target.value)
+                            }
+                            className={inputClass}
+                          />
+                        </div>
 
-                      <div className="flex items-end sm:col-span-2">
-                        <div className="w-full rounded-lg bg-slate-50 px-3 py-2.5">
-                          <p className="text-[10px] font-semibold uppercase text-slate-400">
-                            Amount
-                          </p>
-                          <p className="mt-0.5 text-sm font-semibold text-slate-800">
-                            {money(
-                              Math.max(
-                                0,
-                                (Number(item.quantity) || 0) *
-                                  (Number(item.unit_price) || 0) -
-                                  (Number(item.discount) || 0)
-                              ),
-                              currency
-                            )}
-                          </p>
+                        <div className="sm:col-span-2">
+                          <label className={labelClass}>GST %</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={item.tax_rate}
+                            onChange={(e) =>
+                              updateItem(index, "tax_rate", e.target.value)
+                            }
+                            className={inputClass}
+                          />
+                        </div>
+
+                        <div className="flex items-end sm:col-span-2">
+                          <div className="w-full rounded-lg bg-slate-50 px-3 py-2.5">
+                            <p className="text-[10px] font-semibold uppercase text-slate-400">
+                              Amount before GST
+                            </p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-800">
+                              {money(
+                                calculatedItem?.taxable ?? 0,
+                                currency
+                              )}
+                            </p>
+                          </div>
                         </div>
                       </div>
+
+                      <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-slate-700">
+                            GST breakup preview
+                          </p>
+                          <span className="text-xs text-slate-500">
+                            {Number(item.tax_rate) || 0}% GST
+                          </span>
+                        </div>
+
+                        {isGstConfigured ? (
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {isIntraState ? (
+                              <>
+                                <div>
+                                  <p className="text-xs text-slate-500">CGST</p>
+                                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                                    {money(
+                                      calculatedItem?.cgstAmount ?? 0,
+                                      currency
+                                    )}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-500">SGST</p>
+                                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                                    {money(
+                                      calculatedItem?.sgstAmount ?? 0,
+                                      currency
+                                    )}
+                                  </p>
+                                </div>
+                              </>
+                            ) : (
+                              <div>
+                                <p className="text-xs text-slate-500">IGST</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-900">
+                                  {money(
+                                    calculatedItem?.igstAmount ?? 0,
+                                    currency
+                                  )}
+                                </p>
+                              </div>
+                            )}
+
+                            <div>
+                              <p className="text-xs text-slate-500">Total GST</p>
+                              <p className="mt-1 text-sm font-semibold text-indigo-700">
+                                {money(
+                                  calculatedItem?.gstAmount ?? 0,
+                                  currency
+                                )}
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Amount incl. GST
+                              </p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">
+                                {money(
+                                  calculatedItem?.lineTotal ?? 0,
+                                  currency
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-amber-700">
+                            Select your business state and Place of Supply to
+                            calculate the GST components.
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
 
@@ -682,6 +997,10 @@ export default function InvoiceFormModal({
               </div>
 
               <div className="rounded-xl bg-slate-50 p-4">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+                  Invoice summary
+                </h3>
+
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-sm font-medium text-slate-600">
                     Subtotal
@@ -701,7 +1020,9 @@ export default function InvoiceFormModal({
                 </div>
 
                 <div className="mt-3">
-                  <label className={labelClass}>Additional invoice discount</label>
+                  <label className={labelClass}>
+                    Additional invoice discount
+                  </label>
                   <input
                     type="number"
                     min="0"
@@ -713,8 +1034,58 @@ export default function InvoiceFormModal({
                 </div>
 
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className="text-sm text-slate-600">GST</span>
-                  <span className="text-sm text-slate-800">
+                  <span className="text-sm text-slate-600">
+                    Taxable amount
+                  </span>
+                  <span className="text-sm font-medium text-slate-800">
+                    {money(
+                      calculations.taxableSubtotal - calculations.discount,
+                      currency
+                    )}
+                  </span>
+                </div>
+
+                <div className="my-4 border-t border-slate-200" />
+
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  GST breakup
+                </p>
+
+                {isGstConfigured ? (
+                  isIntraState ? (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-slate-600">CGST</span>
+                        <span className="text-sm font-medium text-slate-800">
+                          {money(calculations.cgstAmount, currency)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span className="text-sm text-slate-600">SGST</span>
+                        <span className="text-sm font-medium text-slate-800">
+                          {money(calculations.sgstAmount, currency)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-slate-600">IGST</span>
+                      <span className="text-sm font-medium text-slate-800">
+                        {money(calculations.igstAmount, currency)}
+                      </span>
+                    </div>
+                  )
+                ) : (
+                  <p className="text-xs text-amber-700">
+                    GST breakup will appear after selecting both states.
+                  </p>
+                )}
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-slate-700">
+                    Total GST
+                  </span>
+                  <span className="text-sm font-semibold text-indigo-700">
                     {money(calculations.taxAmount, currency)}
                   </span>
                 </div>
@@ -727,6 +1098,11 @@ export default function InvoiceFormModal({
                     {money(calculations.total, currency)}
                   </span>
                 </div>
+
+                <p className="mt-3 text-[11px] text-slate-500">
+                  GST amounts shown here are previews. Final amounts are
+                  calculated and rounded by the server when the invoice is saved.
+                </p>
               </div>
             </section>
           </div>

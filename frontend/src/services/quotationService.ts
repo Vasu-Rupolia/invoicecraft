@@ -24,6 +24,7 @@ export interface QuotationPayload {
   customer_phone: string;
   customer_gstin: string;
   billing_address: string;
+  place_of_supply_state_code: string;
   quotation_date: string;
   valid_until: string;
   discount: number;
@@ -37,6 +38,9 @@ export interface QuotationItem extends QuotationItemPayload {
   id: number;
   quotation_id: number;
   tax_amount: number | string;
+  cgst_amount?: number | string;
+  sgst_amount?: number | string;
+  igst_amount?: number | string;
   line_total: number | string;
 }
 
@@ -52,9 +56,15 @@ export interface Quotation {
   customer_phone: string | null;
   customer_gstin: string | null;
   billing_address: string | null;
+  place_of_supply_state: string | null;
+  place_of_supply_state_code: string | null;
+  tax_type: "cgst_sgst" | "igst" | null;
   subtotal: number | string;
   discount: number | string;
   tax_amount: number | string;
+  cgst_amount?: number | string;
+  sgst_amount?: number | string;
+  igst_amount?: number | string;
   total: number | string;
   currency: string;
   status: QuotationStatus;

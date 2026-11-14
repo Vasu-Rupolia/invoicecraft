@@ -20,6 +20,46 @@ interface Props {
   converting: boolean;
 }
 
+const INDIAN_STATES = [
+  { code: "01", name: "Jammu and Kashmir" },
+  { code: "02", name: "Himachal Pradesh" },
+  { code: "03", name: "Punjab" },
+  { code: "04", name: "Chandigarh" },
+  { code: "05", name: "Uttarakhand" },
+  { code: "06", name: "Haryana" },
+  { code: "07", name: "Delhi" },
+  { code: "08", name: "Rajasthan" },
+  { code: "09", name: "Uttar Pradesh" },
+  { code: "10", name: "Bihar" },
+  { code: "11", name: "Sikkim" },
+  { code: "12", name: "Arunachal Pradesh" },
+  { code: "13", name: "Nagaland" },
+  { code: "14", name: "Manipur" },
+  { code: "15", name: "Mizoram" },
+  { code: "16", name: "Tripura" },
+  { code: "17", name: "Meghalaya" },
+  { code: "18", name: "Assam" },
+  { code: "19", name: "West Bengal" },
+  { code: "20", name: "Jharkhand" },
+  { code: "21", name: "Odisha" },
+  { code: "22", name: "Chhattisgarh" },
+  { code: "23", name: "Madhya Pradesh" },
+  { code: "24", name: "Gujarat" },
+  { code: "26", name: "Dadra and Nagar Haveli and Daman and Diu" },
+  { code: "27", name: "Maharashtra" },
+  { code: "28", name: "Andhra Pradesh" },
+  { code: "29", name: "Karnataka" },
+  { code: "30", name: "Goa" },
+  { code: "31", name: "Lakshadweep" },
+  { code: "32", name: "Kerala" },
+  { code: "33", name: "Tamil Nadu" },
+  { code: "34", name: "Puducherry" },
+  { code: "35", name: "Andaman and Nicobar Islands" },
+  { code: "36", name: "Telangana" },
+  { code: "37", name: "Andhra Pradesh (New)" },
+  { code: "38", name: "Ladakh" },
+];
+
 const money = (
   value: number | string | null | undefined,
   currency = "INR",
@@ -83,6 +123,9 @@ const statusStyle: Record<string, string> = {
   converted: "bg-indigo-100 text-indigo-700",
 };
 
+const getStateName = (code?: string | null) =>
+  INDIAN_STATES.find((state) => state.code === code)?.name ?? "—";
+
 export default function QuotationDetailsModal({
   quotation,
   onClose,
@@ -115,11 +158,20 @@ export default function QuotationDetailsModal({
     business?.logo_path || business?.logo_url,
   );
 
+  const placeOfSupply =
+    quotation.place_of_supply_state ||
+    getStateName(quotation.place_of_supply_state_code);
+
+  const isIntraState = quotation.tax_type === "cgst_sgst";
+  const isInterState = quotation.tax_type === "igst";
+
+  const cgstAmount = Number(quotation.cgst_amount ?? 0);
+  const sgstAmount = Number(quotation.sgst_amount ?? 0);
+  const igstAmount = Number(quotation.igst_amount ?? 0);
+
   return (
     <div className="quotation-modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-950/50 p-3 backdrop-blur-sm sm:p-6">
       <div className="my-auto w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-
-        {/* Modal header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 sm:px-7 print:hidden">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
@@ -148,12 +200,10 @@ export default function QuotationDetailsModal({
           </div>
         </div>
 
-        {/* Quotation document */}
         <div
           id="quotation-print-area"
           className="quotation-document space-y-7 p-5 sm:p-8"
         >
-
           {/* Business profile */}
           <section className="flex flex-col justify-between gap-5 border-b border-gray-200 pb-6 sm:flex-row sm:items-start">
             <div className="flex items-start gap-4">
@@ -173,7 +223,6 @@ export default function QuotationDetailsModal({
                 {businessAddress && (
                   <div className="mt-2 flex items-start gap-2 text-sm leading-6 text-gray-600">
                     <MapPin size={15} className="mt-1 shrink-0" />
-
                     <p className="whitespace-pre-line">
                       {businessAddress}
                     </p>
@@ -301,26 +350,52 @@ export default function QuotationDetailsModal({
               )}
             </div>
 
+            {/* Supply and validity */}
             <div className="rounded-xl border border-gray-200 p-4">
               <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500">
                 <CalendarDays size={16} />
-                Quotation validity
+                Supply and validity
               </div>
 
-              <p className="text-sm leading-6 text-gray-600">
-                {quotation.valid_until
-                  ? `This quotation is valid until ${date(quotation.valid_until)}.`
-                  : "No validity date has been specified for this quotation."}
-              </p>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <p className="text-xs text-gray-500">
+                    Place of Supply
+                  </p>
 
-              <div className="mt-4 border-t border-gray-100 pt-3">
-                <p className="text-xs text-gray-500">
-                  Document number
-                </p>
+                  <p className="mt-1 font-semibold text-gray-900">
+                    {placeOfSupply}
+                    {quotation.place_of_supply_state_code
+                      ? ` (${quotation.place_of_supply_state_code})`
+                      : ""}
+                  </p>
+                </div>
 
-                <p className="mt-1 font-semibold text-gray-900">
-                  {quotation.quotation_number}
-                </p>
+                <div>
+                  <p className="text-xs text-gray-500">
+                    GST treatment
+                  </p>
+
+                  <p className="mt-1 font-semibold text-gray-900">
+                    {isIntraState
+                      ? "Intra-state — CGST + SGST"
+                      : isInterState
+                        ? "Inter-state — IGST"
+                        : "GST breakup unavailable"}
+                  </p>
+                </div>
+
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-xs text-gray-500">
+                    Quotation validity
+                  </p>
+
+                  <p className="mt-1 leading-6 text-gray-600">
+                    {quotation.valid_until
+                      ? `This quotation is valid until ${date(quotation.valid_until)}.`
+                      : "No validity date has been specified."}
+                  </p>
+                </div>
               </div>
             </div>
           </section>
@@ -332,55 +407,100 @@ export default function QuotationDetailsModal({
             </h2>
 
             <div className="overflow-x-auto rounded-xl border border-gray-200">
-              <table className="w-full min-w-[650px] text-left text-sm">
+              <table className="w-full min-w-[700px] text-left text-sm">
                 <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-600">
                   <tr>
                     <th className="px-4 py-3">Description</th>
                     <th className="px-4 py-3 text-right">Qty</th>
                     <th className="px-4 py-3 text-right">Rate</th>
                     <th className="px-4 py-3 text-right">Discount</th>
-                    <th className="px-4 py-3 text-right">Tax</th>
+                    <th className="px-4 py-3 text-right">Taxable value</th>
+                    <th className="px-4 py-3 text-right">GST breakup</th>
                     <th className="px-4 py-3 text-right">Amount</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
-                  {(quotation.items ?? []).map((item, index) => (
-                    <tr key={item.id ?? index}>
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {item.description}
-                      </td>
+                  {(quotation.items ?? []).map((item, index) => {
+                    const itemCgst = Number(item.cgst_amount ?? 0);
+                    const itemSgst = Number(item.sgst_amount ?? 0);
+                    const itemIgst = Number(item.igst_amount ?? 0);
 
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {Number(item.quantity)} {item.unit}
-                      </td>
+                    const itemTax = Number(item.tax_amount ?? 0);
 
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {money(item.unit_price, quotation.currency)}
-                      </td>
+                    // line_total includes taxable value + GST.
+                    // This also accounts for quotation-level discount allocation.
+                    const taxableValue = Math.max(
+                      0,
+                      Number(item.line_total ?? 0) - itemTax,
+                    );
 
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {money(item.discount, quotation.currency)}
-                      </td>
+                    const hasGstBreakup =
+                      item.cgst_amount != null ||
+                      item.sgst_amount != null ||
+                      item.igst_amount != null;
 
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {Number(item.tax_rate)}%
+                    return (
+                      <tr key={item.id ?? index}>
+                        <td className="px-4 py-3 font-medium text-gray-900">
+                          {item.description}
+                        </td>
 
-                        <span className="block text-xs text-gray-400">
-                          {money(item.tax_amount, quotation.currency)}
-                        </span>
-                      </td>
+                        <td className="px-4 py-3 text-right text-gray-600">
+                          {Number(item.quantity)} {item.unit}
+                        </td>
 
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                        {money(item.line_total, quotation.currency)}
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="px-4 py-3 text-right text-gray-600">
+                          {money(item.unit_price, quotation.currency)}
+                        </td>
+
+                        <td className="px-4 py-3 text-right text-gray-600">
+                          {money(item.discount, quotation.currency)}
+                        </td>
+
+                        <td className="px-4 py-3 text-right text-gray-600">
+                          {money(taxableValue, quotation.currency)}
+                        </td>
+
+                        <td className="px-4 py-3 text-right text-gray-600">
+                          <span className="font-medium">
+                            {Number(item.tax_rate)}%
+                          </span>
+
+                          <span className="block text-xs text-gray-500">
+                            Total: {money(itemTax, quotation.currency)}
+                          </span>
+
+                          {hasGstBreakup && isIntraState && (
+                            <>
+                              <span className="mt-1 block text-xs text-gray-500">
+                                CGST: {money(itemCgst, quotation.currency)}
+                              </span>
+
+                              <span className="block text-xs text-gray-500">
+                                SGST: {money(itemSgst, quotation.currency)}
+                              </span>
+                            </>
+                          )}
+
+                          {hasGstBreakup && isInterState && (
+                            <span className="mt-1 block text-xs text-gray-500">
+                              IGST: {money(itemIgst, quotation.currency)}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                          {money(item.line_total, quotation.currency)}
+                        </td>
+                      </tr>
+                    );
+                  })}
 
                   {!quotation.items?.length && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="px-4 py-8 text-center text-gray-500"
                       >
                         No quotation items found.
@@ -397,7 +517,6 @@ export default function QuotationDetailsModal({
             <div className="w-full max-w-sm space-y-3 rounded-xl border border-gray-200 p-5">
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Subtotal</span>
-
                 <span>
                   {money(quotation.subtotal, quotation.currency)}
                 </span>
@@ -405,15 +524,51 @@ export default function QuotationDetailsModal({
 
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Discount</span>
-
                 <span>
                   - {money(quotation.discount, quotation.currency)}
                 </span>
               </div>
 
               <div className="flex justify-between text-sm text-gray-600">
-                <span>Tax</span>
+                <span>Taxable amount</span>
+                <span>
+                  {money(
+                    Number(quotation.subtotal ?? 0) -
+                      Number(quotation.discount ?? 0),
+                    quotation.currency,
+                  )}
+                </span>
+              </div>
 
+              {isIntraState && (
+                <>
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>CGST</span>
+                    <span>
+                      {money(cgstAmount, quotation.currency)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>SGST</span>
+                    <span>
+                      {money(sgstAmount, quotation.currency)}
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {isInterState && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>IGST</span>
+                  <span>
+                    {money(igstAmount, quotation.currency)}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Total GST</span>
                 <span>
                   {money(quotation.tax_amount, quotation.currency)}
                 </span>
@@ -421,7 +576,6 @@ export default function QuotationDetailsModal({
 
               <div className="flex justify-between border-t-2 border-gray-800 pt-3 text-lg font-bold text-gray-900">
                 <span>Grand Total</span>
-
                 <span>
                   {money(quotation.total, quotation.currency)}
                 </span>

@@ -7,6 +7,7 @@ use App\Models\BusinessProfile;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Quotation;
+use App\Services\GstCalculationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -79,9 +80,47 @@ class QuotationController extends Controller
         return $customer;
     }
 
+    private function validatePlaceOfSupply(
+        string $supplierStateCode,
+        string $placeOfSupplyStateCode
+    ): string {
+        $states = config('indian_states', []);
+        $validCodes = array_column($states, 'code');
+
+        if (!in_array($supplierStateCode, $validCodes, true)) {
+            throw ValidationException::withMessages([
+                'business_state_code' => [
+                    'Please select a valid state in your business settings.',
+                ],
+            ]);
+        }
+
+        if (!in_array($placeOfSupplyStateCode, $validCodes, true)) {
+            throw ValidationException::withMessages([
+                'place_of_supply_state_code' => [
+                    'Please select a valid Place of Supply state.',
+                ],
+            ]);
+        }
+
+        foreach ($states as $state) {
+            if ($state['code'] === $placeOfSupplyStateCode) {
+                return $state['name'];
+            }
+        }
+
+        throw ValidationException::withMessages([
+            'place_of_supply_state_code' => [
+                'Invalid Place of Supply state.',
+            ],
+        ]);
+    }
+
     private function calculateTotals(
         array $items,
-        float $invoiceDiscount
+        float $invoiceDiscount,
+        string $supplierStateCode,
+        string $placeOfSupplyStateCode
     ): array {
         $subtotal = 0;
         $itemDiscountTotal = 0;
@@ -141,9 +180,16 @@ class QuotationController extends Controller
         );
 
         $calculatedItems = [];
+
         $taxAmount = 0;
+        $cgstAmount = 0;
+        $sgstAmount = 0;
+        $igstAmount = 0;
+
         $distributedDiscount = 0;
         $lastIndex = count($items) - 1;
+
+        $gstService = app(GstCalculationService::class);
 
         foreach ($items as $index => $item) {
             $base = $bases[$index];
@@ -172,10 +218,14 @@ class QuotationController extends Controller
 
             $rate = (float) ($item['tax_rate'] ?? 0);
 
-            $itemTax = round(
-                $taxableAmount * $rate / 100,
-                2
+            $gst = $gstService->calculate(
+                $taxableAmount,
+                $rate,
+                $supplierStateCode,
+                $placeOfSupplyStateCode
             );
+
+            $itemTax = $gst['tax_amount'];
 
             $lineTotal = round(
                 $taxableAmount + $itemTax,
@@ -183,6 +233,9 @@ class QuotationController extends Controller
             );
 
             $taxAmount += $itemTax;
+            $cgstAmount += $gst['cgst_amount'];
+            $sgstAmount += $gst['sgst_amount'];
+            $igstAmount += $gst['igst_amount'];
 
             $calculatedItems[] = [
                 'description' => $item['description'],
@@ -192,16 +245,30 @@ class QuotationController extends Controller
                 'discount' => $item['discount'] ?? 0,
                 'tax_rate' => $rate,
                 'tax_amount' => $itemTax,
+                'cgst_amount' => $gst['cgst_amount'],
+                'sgst_amount' => $gst['sgst_amount'],
+                'igst_amount' => $gst['igst_amount'],
                 'line_total' => $lineTotal,
             ];
         }
 
         $taxAmount = round($taxAmount, 2);
+        $cgstAmount = round($cgstAmount, 2);
+        $sgstAmount = round($sgstAmount, 2);
+        $igstAmount = round($igstAmount, 2);
+
+        $taxType = $supplierStateCode === $placeOfSupplyStateCode
+            ? 'cgst_sgst'
+            : 'igst';
 
         return [
             'subtotal' => $subtotal,
             'discount' => $totalDiscount,
             'tax_amount' => $taxAmount,
+            'cgst_amount' => $cgstAmount,
+            'sgst_amount' => $sgstAmount,
+            'igst_amount' => $igstAmount,
+            'tax_type' => $taxType,
             'total' => round(
                 $remainingTaxable + $taxAmount,
                 2
@@ -365,6 +432,13 @@ class QuotationController extends Controller
                 'max:5000',
             ],
 
+            'place_of_supply_state_code' => [
+                'required',
+                'string',
+                'size:2',
+                Rule::in(array_column(config('indian_states', []), 'code')),
+            ],
+
             'quotation_date' => ['required', 'date'],
 
             'valid_until' => [
@@ -449,6 +523,11 @@ class QuotationController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            $placeOfSupplyState = $this->validatePlaceOfSupply(
+                (string) $business->state_code,
+                $validated['place_of_supply_state_code']
+            );
+
             $customer = $this->validateCustomer(
                 $businessId,
                 $validated['customer_id'] ?? null
@@ -456,7 +535,9 @@ class QuotationController extends Controller
 
             $totals = $this->calculateTotals(
                 $validated['items'],
-                (float) ($validated['discount'] ?? 0)
+                (float) ($validated['discount'] ?? 0),
+                (string) $business->state_code,
+                $validated['place_of_supply_state_code']
             );
 
             $quotation = Quotation::create([
@@ -485,9 +566,16 @@ class QuotationController extends Controller
                 'billing_address' => $customer?->billing_address
                     ?? ($validated['billing_address'] ?? null),
 
+                'place_of_supply_state' => $placeOfSupplyState,
+                'place_of_supply_state_code' => $validated['place_of_supply_state_code'],
+
                 'subtotal' => $totals['subtotal'],
                 'discount' => $totals['discount'],
                 'tax_amount' => $totals['tax_amount'],
+                'cgst_amount' => $totals['cgst_amount'],
+                'sgst_amount' => $totals['sgst_amount'],
+                'igst_amount' => $totals['igst_amount'],
+                'tax_type' => $totals['tax_type'],
                 'total' => $totals['total'],
 
                 'currency' => $business->currency,
@@ -579,6 +667,13 @@ class QuotationController extends Controller
                 'max:5000',
             ],
 
+            'place_of_supply_state_code' => [
+                'required',
+                'string',
+                'size:2',
+                Rule::in(array_column(config('indian_states', []), 'code')),
+            ],
+
             'quotation_date' => ['required', 'date'],
 
             'valid_until' => [
@@ -660,6 +755,10 @@ class QuotationController extends Controller
             $quotationId,
             $validated
         ) {
+            $business = BusinessProfile::where('id', $businessId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $quotation = Quotation::where(
                 'business_profile_id',
                 $businessId
@@ -676,6 +775,11 @@ class QuotationController extends Controller
                 ]);
             }
 
+            $placeOfSupplyState = $this->validatePlaceOfSupply(
+                (string) $business->state_code,
+                $validated['place_of_supply_state_code']
+            );
+
             $customer = $this->validateCustomer(
                 $businessId,
                 $validated['customer_id'] ?? null
@@ -683,7 +787,9 @@ class QuotationController extends Controller
 
             $totals = $this->calculateTotals(
                 $validated['items'],
-                (float) ($validated['discount'] ?? 0)
+                (float) ($validated['discount'] ?? 0),
+                (string) $business->state_code,
+                $validated['place_of_supply_state_code']
             );
 
             $quotation->update([
@@ -707,9 +813,16 @@ class QuotationController extends Controller
                 'billing_address' => $customer?->billing_address
                     ?? ($validated['billing_address'] ?? null),
 
+                'place_of_supply_state' => $placeOfSupplyState,
+                'place_of_supply_state_code' => $validated['place_of_supply_state_code'],
+
                 'subtotal' => $totals['subtotal'],
                 'discount' => $totals['discount'],
                 'tax_amount' => $totals['tax_amount'],
+                'cgst_amount' => $totals['cgst_amount'],
+                'sgst_amount' => $totals['sgst_amount'],
+                'igst_amount' => $totals['igst_amount'],
+                'tax_type' => $totals['tax_type'],
                 'total' => $totals['total'],
 
                 'status' => $validated['status']
@@ -784,6 +897,17 @@ class QuotationController extends Controller
                 ]);
             }
 
+            if (
+                empty($quotation->place_of_supply_state_code) ||
+                empty($quotation->tax_type)
+            ) {
+                throw ValidationException::withMessages([
+                    'quotation' => [
+                        'This quotation does not contain GST details. Please update the quotation before converting it.',
+                    ],
+                ]);
+            }
+
             $invoiceNumber = $this->generateInvoiceNumber($business);
 
             $invoice = Invoice::create([
@@ -800,10 +924,18 @@ class QuotationController extends Controller
                 'customer_gstin' => $quotation->customer_gstin,
                 'billing_address' => $quotation->billing_address,
 
+                'place_of_supply_state' => $quotation->place_of_supply_state,
+                'place_of_supply_state_code' => $quotation->place_of_supply_state_code,
+
                 'subtotal' => $quotation->subtotal,
                 'discount' => $quotation->discount,
                 'tax_amount' => $quotation->tax_amount,
+                'cgst_amount' => $quotation->cgst_amount,
+                'sgst_amount' => $quotation->sgst_amount,
+                'igst_amount' => $quotation->igst_amount,
+                'tax_type' => $quotation->tax_type,
                 'total' => $quotation->total,
+
                 'amount_paid' => 0,
                 'balance_due' => $quotation->total,
 
@@ -823,6 +955,9 @@ class QuotationController extends Controller
                     'discount' => $item->discount,
                     'tax_rate' => $item->tax_rate,
                     'tax_amount' => $item->tax_amount,
+                    'cgst_amount' => $item->cgst_amount,
+                    'sgst_amount' => $item->sgst_amount,
+                    'igst_amount' => $item->igst_amount,
                     'line_total' => $item->line_total,
                 ]);
             }

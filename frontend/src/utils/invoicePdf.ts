@@ -7,7 +7,10 @@ const MARGIN = 14;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 const FONT_NAME = "NotoSans";
 
-const money = (value: number | string, currency = "INR") => {
+const money = (
+  value: number | string | null | undefined,
+  currency = "INR",
+) => {
   try {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -139,9 +142,7 @@ const loadLogo = async (
 
         context.drawImage(image, 0, 0);
 
-        const imageData = canvas.toDataURL("image/png");
-
-        resolve(imageData);
+        resolve(canvas.toDataURL("image/png"));
       } catch (error) {
         console.error("Unable to convert business logo for PDF:", error);
         resolve(null);
@@ -175,16 +176,13 @@ const addLogo = (
       maxHeight / dimensions.height,
     );
 
-    const width = dimensions.width * ratio;
-    const height = dimensions.height * ratio;
-
     doc.addImage(
       logo,
       "PNG",
       x,
       y,
-      width,
-      height,
+      dimensions.width * ratio,
+      dimensions.height * ratio,
       undefined,
       "FAST",
     );
@@ -244,7 +242,6 @@ const addTextSection = (
   doc.setFont(FONT_NAME, "normal");
   doc.setFontSize(9);
   doc.setTextColor(85, 95, 110);
-
   doc.text(lines, MARGIN, y);
 
   return y + lines.length * 5 + 8;
@@ -260,11 +257,32 @@ const createInvoicePdf = async (
     format: "a4",
   });
 
-  // Register Unicode fonts before drawing any text.
   await registerFonts(doc);
 
   const currency = invoice.currency || business?.currency || "INR";
   const logo = business ? await loadLogo(business) : null;
+
+  const isIntraState = invoice.tax_type === "cgst_sgst";
+  const isInterState = invoice.tax_type === "igst";
+
+  const cgstAmount = Number(invoice.cgst_amount ?? 0);
+  const sgstAmount = Number(invoice.sgst_amount ?? 0);
+  const igstAmount = Number(invoice.igst_amount ?? 0);
+
+  const placeOfSupply = [
+    invoice.place_of_supply_state,
+    invoice.place_of_supply_state_code
+      ? `(${invoice.place_of_supply_state_code})`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const gstTreatment = isIntraState
+    ? "CGST + SGST"
+    : isInterState
+      ? "IGST"
+      : "GST breakup unavailable";
 
   // Brand header
   doc.setFillColor(79, 70, 229);
@@ -377,11 +395,13 @@ const createInvoicePdf = async (
     customerY += wrapped.length * 4;
   });
 
-  const invoiceDetails = [
+  const invoiceDetails: [string, string][] = [
     ["Invoice Number", invoice.invoice_number],
     ["Invoice Date", formatDate(invoice.invoice_date)],
     ["Due Date", formatDate(invoice.due_date)],
     ["Status", invoice.status.replaceAll("_", " ").toUpperCase()],
+    ["Place of Supply", placeOfSupply || "—"],
+    ["GST Treatment", gstTreatment],
   ];
 
   let detailsY = 66;
@@ -403,7 +423,7 @@ const createInvoicePdf = async (
     detailsY += 7;
   });
 
-  // Items table
+  // Items table with GST breakup
   const tableStartY = Math.max(customerY, detailsY) + 9;
 
   autoTable(doc, {
@@ -420,32 +440,60 @@ const createInvoicePdf = async (
         "Qty",
         "Unit Price",
         "Discount",
-        "GST",
+        "Taxable",
+        "GST Breakup",
         "Amount",
       ],
     ],
-    body: (invoice.items || []).map((item) => [
-      item.description || "—",
-      `${Number(item.quantity)} ${item.unit || ""}`,
-      money(item.unit_price, currency),
-      money(item.discount, currency),
-      `${Number(item.tax_rate)}%`,
-      money(item.line_total, currency),
-    ]),
+    body: (invoice.items || []).map((item) => {
+      const itemTax = Number(item.tax_amount ?? 0);
+
+      const taxableValue = Math.max(
+        0,
+        Number(item.line_total ?? 0) - itemTax,
+      );
+
+      const itemCgst = Number(item.cgst_amount ?? 0);
+      const itemSgst = Number(item.sgst_amount ?? 0);
+      const itemIgst = Number(item.igst_amount ?? 0);
+
+      let gstBreakup = `${Number(item.tax_rate)}%\n`;
+
+      if (isIntraState) {
+        gstBreakup +=
+          `CGST: ${money(itemCgst, currency)}\n` +
+          `SGST: ${money(itemSgst, currency)}`;
+      } else if (isInterState) {
+        gstBreakup += `IGST: ${money(itemIgst, currency)}`;
+      } else {
+        gstBreakup += money(itemTax, currency);
+      }
+
+      return [
+        item.description || "—",
+        `${Number(item.quantity)} ${item.unit || ""}`,
+        money(item.unit_price, currency),
+        money(item.discount, currency),
+        money(taxableValue, currency),
+        gstBreakup,
+        money(item.line_total, currency),
+      ];
+    }),
     theme: "grid",
     headStyles: {
       fillColor: [79, 70, 229],
       textColor: [255, 255, 255],
       font: FONT_NAME,
       fontStyle: "bold",
-      fontSize: 8,
+      fontSize: 7,
     },
     bodyStyles: {
       font: FONT_NAME,
       fontStyle: "normal",
-      fontSize: 8,
+      fontSize: 7,
       textColor: [55, 65, 85],
-      cellPadding: 3,
+      cellPadding: 2.5,
+      valign: "middle",
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252],
@@ -453,17 +501,18 @@ const createInvoicePdf = async (
     styles: {
       font: FONT_NAME,
       overflow: "linebreak",
-      cellPadding: 3,
+      cellPadding: 2.5,
       lineColor: [230, 233, 240],
       lineWidth: 0.2,
     },
     columnStyles: {
-      0: { cellWidth: 51 },
-      1: { cellWidth: 19 },
-      2: { cellWidth: 29, halign: "right" },
-      3: { cellWidth: 25, halign: "right" },
-      4: { cellWidth: 18, halign: "center" },
-      5: { cellWidth: "auto", halign: "right" },
+      0: { cellWidth: 36 },
+      1: { cellWidth: 15, halign: "right" },
+      2: { cellWidth: 25, halign: "right" },
+      3: { cellWidth: 22, halign: "right" },
+      4: { cellWidth: 25, halign: "right" },
+      5: { cellWidth: 37, halign: "left" },
+      6: { cellWidth: "auto", halign: "right" },
     },
     didDrawPage: (data) => {
       if (data.pageNumber > 1) {
@@ -488,16 +537,37 @@ const createInvoicePdf = async (
     ).lastAutoTable.finalY + 10;
 
   // Invoice totals
-  const totals = [
+  const totals: [string, string][] = [
     ["Subtotal", money(invoice.subtotal, currency)],
     ["Total discount", `- ${money(invoice.discount, currency)}`],
-    ["GST", money(invoice.tax_amount, currency)],
+    [
+      "Taxable amount",
+      money(
+        Number(invoice.subtotal ?? 0) - Number(invoice.discount ?? 0),
+        currency,
+      ),
+    ],
+  ];
+
+  if (isIntraState) {
+    totals.push(
+      ["CGST", money(cgstAmount, currency)],
+      ["SGST", money(sgstAmount, currency)],
+    );
+  }
+
+  if (isInterState) {
+    totals.push(["IGST", money(igstAmount, currency)]);
+  }
+
+  totals.push(
+    ["Total GST", money(invoice.tax_amount, currency)],
     ["Total", money(invoice.total, currency)],
     ["Amount paid", money(invoice.amount_paid, currency)],
     ["Balance due", money(invoice.balance_due, currency)],
-  ];
+  );
 
-  const totalsHeight = 9 + totals.length * 7;
+  const totalsHeight = 13 + totals.length * 7;
 
   if (y + totalsHeight > 276) {
     doc.addPage();
@@ -518,7 +588,7 @@ const createInvoicePdf = async (
     "F",
   );
 
-  y += 8;
+  y += 9;
 
   totals.forEach(([label, value]) => {
     const isTotal = label === "Total";
@@ -528,6 +598,7 @@ const createInvoicePdf = async (
       FONT_NAME,
       isTotal || isBalance ? "bold" : "normal",
     );
+
     doc.setFontSize(isTotal ? 10 : 8.5);
 
     if (isTotal) {

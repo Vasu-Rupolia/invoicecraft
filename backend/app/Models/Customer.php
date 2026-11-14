@@ -15,6 +15,8 @@ class Customer extends Model
         'phone',
         'company_name',
         'gstin',
+        'state',
+        'state_code',
         'billing_address',
         'shipping_address',
         'notes',

@@ -15,8 +15,11 @@ type PdfDocument = jsPDF & {
   };
 };
 
-const money = (value: number | string, currency = "INR") => {
-  const amount = Number(value) || 0;
+const amount = (value: number | string | null | undefined) =>
+  Number(value) || 0;
+
+const money = (value: number | string | null | undefined, currency = "INR") => {
+  const valueAmount = amount(value);
 
   try {
     return new Intl.NumberFormat("en-IN", {
@@ -24,9 +27,9 @@ const money = (value: number | string, currency = "INR") => {
       currency: currency || "INR",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    }).format(valueAmount);
   } catch {
-    return `${currency} ${amount.toFixed(2)}`;
+    return `${currency} ${valueAmount.toFixed(2)}`;
   }
 };
 
@@ -46,6 +49,15 @@ const formatDate = (value?: string | null) => {
 
 const formatStatus = (status: string) =>
   status.replaceAll("_", " ").toUpperCase();
+
+const formatTaxType = (taxType?: string | null) => {
+  if (!taxType) return "—";
+
+  return taxType
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .toUpperCase();
+};
 
 const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
   const bytes = new Uint8Array(buffer);
@@ -287,6 +299,40 @@ const addTextSection = (
   return y + 5;
 };
 
+const getItemTaxBreakup = (item: Quotation["items"][number]) => {
+  const cgst = amount(item.cgst_amount);
+  const sgst = amount(item.sgst_amount);
+  const igst = amount(item.igst_amount);
+
+  if (igst > 0) {
+    return `IGST: ${igst.toFixed(2)}`;
+  }
+
+  if (cgst > 0 || sgst > 0) {
+    return [
+      `CGST: ${cgst.toFixed(2)}`,
+      `SGST: ${sgst.toFixed(2)}`,
+    ].join("\n");
+  }
+
+  return money(item.tax_amount);
+};
+
+const getItemTaxableAmount = (item: Quotation["items"][number]) => {
+  const lineTotal = amount(item.line_total);
+  const taxAmount = amount(item.tax_amount);
+
+  // Backend line_total includes GST, so subtract saved GST to get taxable value.
+  if (item.tax_amount !== null && item.tax_amount !== undefined) {
+    return lineTotal - taxAmount;
+  }
+
+  return (
+    amount(item.quantity) * amount(item.unit_price) -
+    amount(item.discount)
+  );
+};
+
 const createQuotationPdf = async (
   quotation: Quotation,
   business: Business | null,
@@ -301,6 +347,24 @@ const createQuotationPdf = async (
 
   const currency = quotation.currency || business?.currency || "INR";
   const logo = business ? await loadLogo(business) : null;
+
+  const cgstAmount = amount(quotation.cgst_amount);
+  const sgstAmount = amount(quotation.sgst_amount);
+  const igstAmount = amount(quotation.igst_amount);
+  const totalTax = amount(quotation.tax_amount);
+
+  const isInterState =
+    igstAmount > 0 ||
+    quotation.tax_type?.toLowerCase().includes("inter") ||
+    quotation.tax_type?.toLowerCase().includes("igst");
+
+  const hasGstBreakup =
+    quotation.cgst_amount !== null &&
+    quotation.cgst_amount !== undefined &&
+    quotation.sgst_amount !== null &&
+    quotation.sgst_amount !== undefined &&
+    quotation.igst_amount !== null &&
+    quotation.igst_amount !== undefined;
 
   doc.setProperties({
     title: `Quotation ${quotation.quotation_number}`,
@@ -439,6 +503,17 @@ const createQuotationPdf = async (
     ["Quotation Date", formatDate(quotation.quotation_date)],
     ["Valid Until", formatDate(quotation.valid_until)],
     ["Status", formatStatus(quotation.status)],
+    [
+      "Place of Supply",
+      quotation.place_of_supply_state
+        ? `${quotation.place_of_supply_state}${
+            quotation.place_of_supply_state_code
+              ? ` (${quotation.place_of_supply_state_code})`
+              : ""
+          }`
+        : "—",
+    ],
+    ["GST Treatment", formatTaxType(quotation.tax_type)],
   ];
 
   let detailsY = 66;
@@ -457,7 +532,7 @@ const createQuotationPdf = async (
       value,
       PAGE_WIDTH - MARGIN,
       detailsY,
-      { align: "right" },
+      { align: "right", maxWidth: 65 },
     );
 
     detailsY += 7;
@@ -479,7 +554,8 @@ const createQuotationPdf = async (
       "Qty",
       "Unit Price",
       "Discount",
-      "GST",
+      "Taxable",
+      "GST Breakup",
       "Amount",
     ]],
     body: quotation.items?.length
@@ -488,24 +564,25 @@ const createQuotationPdf = async (
           `${Number(item.quantity)} ${item.unit || ""}`.trim(),
           money(item.unit_price, currency),
           money(item.discount, currency),
-          `${Number(item.tax_rate)}%`,
+          money(getItemTaxableAmount(item), currency),
+          getItemTaxBreakup(item),
           money(item.line_total, currency),
         ])
-      : [["No items", "", "", "", "", ""]],
+      : [["No items", "", "", "", "", "", ""]],
     theme: "grid",
     headStyles: {
       fillColor: [79, 70, 229],
       textColor: [255, 255, 255],
       font: FONT_NAME,
       fontStyle: "bold",
-      fontSize: 8,
+      fontSize: 7,
     },
     bodyStyles: {
       font: FONT_NAME,
       fontStyle: "normal",
-      fontSize: 8,
+      fontSize: 7,
       textColor: [55, 65, 85],
-      cellPadding: 3,
+      cellPadding: 2.5,
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252],
@@ -513,17 +590,19 @@ const createQuotationPdf = async (
     styles: {
       font: FONT_NAME,
       overflow: "linebreak",
-      cellPadding: 3,
+      cellPadding: 2.5,
       lineColor: [230, 233, 240],
       lineWidth: 0.2,
+      valign: "middle",
     },
     columnStyles: {
-      0: { cellWidth: 51 },
-      1: { cellWidth: 19 },
-      2: { cellWidth: 29, halign: "right" },
-      3: { cellWidth: 25, halign: "right" },
-      4: { cellWidth: 18, halign: "center" },
-      5: { cellWidth: "auto", halign: "right" },
+      0: { cellWidth: 38 },
+      1: { cellWidth: 14, halign: "center" },
+      2: { cellWidth: 25, halign: "right" },
+      3: { cellWidth: 20, halign: "right" },
+      4: { cellWidth: 25, halign: "right" },
+      5: { cellWidth: 34, halign: "left" },
+      6: { cellWidth: "auto", halign: "right" },
     },
     didDrawPage: (data) => {
       if (data.pageNumber > 1) {
@@ -534,13 +613,26 @@ const createQuotationPdf = async (
 
   let y = (doc as PdfDocument).lastAutoTable.finalY + 10;
 
-  // Totals
-  const totals = [
+  // GST totals
+  const totals: [string, string][] = [
     ["Subtotal", money(quotation.subtotal, currency)],
     ["Total discount", `- ${money(quotation.discount, currency)}`],
-    ["GST", money(quotation.tax_amount, currency)],
-    ["Grand total", money(quotation.total, currency)],
   ];
+
+  if (hasGstBreakup) {
+    if (isInterState) {
+      totals.push(["IGST", money(igstAmount, currency)]);
+    } else {
+      totals.push(["CGST", money(cgstAmount, currency)]);
+      totals.push(["SGST", money(sgstAmount, currency)]);
+    }
+
+    totals.push(["Total GST", money(totalTax, currency)]);
+  } else {
+    totals.push(["GST", money(totalTax, currency)]);
+  }
+
+  totals.push(["Grand total", money(quotation.total, currency)]);
 
   const totalsHeight = 9 + totals.length * 7;
 
@@ -565,10 +657,11 @@ const createQuotationPdf = async (
 
   totals.forEach(([label, value]) => {
     const isTotal = label === "Grand total";
+    const isGstTotal = label === "Total GST";
 
     doc.setFont(
       FONT_NAME,
-      isTotal ? "bold" : "normal",
+      isTotal || isGstTotal ? "bold" : "normal",
     );
 
     doc.setFontSize(isTotal ? 10 : 8.5);

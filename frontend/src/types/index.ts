@@ -15,6 +15,7 @@ export type Business = {
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  state_code?: string | null;
   country?: string | null;
   postal_code?: string | null;
   gstin?: string | null;
@@ -43,6 +44,8 @@ export type Customer = {
   phone: string | null;
   company_name: string | null;
   gstin: string | null;
+  state: string | null;
+  state_code: string | null;
   billing_address: string | null;
   shipping_address: string | null;
   notes: string | null;
@@ -131,6 +134,9 @@ export type InvoiceItem = {
   discount: number;
   tax_rate: number;
   tax_amount: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
   line_total: number;
 };
 
@@ -149,6 +155,12 @@ export type Invoice = {
   subtotal: number;
   discount: number;
   tax_amount: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  tax_type?: string | null;
+  place_of_supply_state?: string | null;
+  place_of_supply_state_code?: string | null;
   total: number;
   amount_paid: number;
   balance_due: number;

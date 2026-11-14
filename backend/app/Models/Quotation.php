@@ -22,6 +22,12 @@ class Quotation extends Model
         'subtotal',
         'discount',
         'tax_amount',
+        'cgst_amount',
+        'sgst_amount',
+        'igst_amount',
+        'tax_type',
+        'place_of_supply_state',
+        'place_of_supply_state_code',
         'total',
         'currency',
         'status',
@@ -37,6 +43,9 @@ class Quotation extends Model
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
+            'cgst_amount' => 'decimal:2',
+            'sgst_amount' => 'decimal:2',
+            'igst_amount' => 'decimal:2',
             'total' => 'decimal:2',
         ];
     }

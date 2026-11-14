@@ -17,6 +17,7 @@ export type InvoicePayload = {
   customer_phone: string;
   customer_gstin: string;
   billing_address: string;
+  place_of_supply_state_code: string;
   invoice_date: string;
   due_date: string;
   discount: number;

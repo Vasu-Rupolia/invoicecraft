@@ -7,6 +7,8 @@ export type CustomerPayload = {
   phone: string;
   company_name: string;
   gstin: string;
+  state: string;
+  state_code: string;
   billing_address: string;
   shipping_address: string;
   notes: string;

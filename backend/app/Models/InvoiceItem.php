@@ -16,6 +16,9 @@ class InvoiceItem extends Model
         'discount',
         'tax_rate',
         'tax_amount',
+        'cgst_amount',
+        'sgst_amount',
+        'igst_amount',
         'line_total',
     ];
 
@@ -27,6 +30,9 @@ class InvoiceItem extends Model
             'discount' => 'decimal:2',
             'tax_rate' => 'decimal:2',
             'tax_amount' => 'decimal:2',
+            'cgst_amount' => 'decimal:2',
+            'sgst_amount' => 'decimal:2',
+            'igst_amount' => 'decimal:2',
             'line_total' => 'decimal:2',
         ];
     }

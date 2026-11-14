@@ -23,6 +23,7 @@ type BusinessForm = {
   address: string;
   city: string;
   state: string;
+  state_code: string;
   country: string;
   postal_code: string;
   gstin: string;
@@ -37,6 +38,46 @@ type ProfileForm = {
   email: string;
 };
 
+const indianStates = [
+  { code: "01", name: "Jammu and Kashmir" },
+  { code: "02", name: "Himachal Pradesh" },
+  { code: "03", name: "Punjab" },
+  { code: "04", name: "Chandigarh" },
+  { code: "05", name: "Uttarakhand" },
+  { code: "06", name: "Haryana" },
+  { code: "07", name: "Delhi" },
+  { code: "08", name: "Rajasthan" },
+  { code: "09", name: "Uttar Pradesh" },
+  { code: "10", name: "Bihar" },
+  { code: "11", name: "Sikkim" },
+  { code: "12", name: "Arunachal Pradesh" },
+  { code: "13", name: "Nagaland" },
+  { code: "14", name: "Manipur" },
+  { code: "15", name: "Mizoram" },
+  { code: "16", name: "Tripura" },
+  { code: "17", name: "Meghalaya" },
+  { code: "18", name: "Assam" },
+  { code: "19", name: "West Bengal" },
+  { code: "20", name: "Jharkhand" },
+  { code: "21", name: "Odisha" },
+  { code: "22", name: "Chhattisgarh" },
+  { code: "23", name: "Madhya Pradesh" },
+  { code: "24", name: "Gujarat" },
+  { code: "26", name: "Dadra and Nagar Haveli and Daman and Diu" },
+  { code: "27", name: "Maharashtra" },
+  { code: "28", name: "Andhra Pradesh" },
+  { code: "29", name: "Karnataka" },
+  { code: "30", name: "Goa" },
+  { code: "31", name: "Lakshadweep" },
+  { code: "32", name: "Kerala" },
+  { code: "33", name: "Tamil Nadu" },
+  { code: "34", name: "Puducherry" },
+  { code: "35", name: "Andaman and Nicobar Islands" },
+  { code: "36", name: "Telangana" },
+  { code: "37", name: "Andhra Pradesh (New)" },
+  { code: "38", name: "Ladakh" },
+];
+
 const emptyBusinessForm: BusinessForm = {
   name: "",
   business_type: "freelancer",
@@ -45,6 +86,7 @@ const emptyBusinessForm: BusinessForm = {
   address: "",
   city: "",
   state: "",
+  state_code: "",
   country: "India",
   postal_code: "",
   gstin: "",
@@ -60,7 +102,6 @@ function assetUrl(path?: string | null): string | null {
   const apiBase = api.defaults.baseURL || "http://127.0.0.1:8001/api";
   const backendUrl = apiBase.replace(/\/api\/?$/, "");
 
-  // Remove any existing host so the configured backend is always used.
   const imagePath = path.replace(
     /^https?:\/\/[^/]+\/storage\//i,
     "",
@@ -204,6 +245,7 @@ export default function SettingsPage() {
           address: business.address || "",
           city: business.city || "",
           state: business.state || "",
+          state_code: business.state_code || "",
           country: business.country || "India",
           postal_code: business.postal_code || "",
           gstin: business.gstin || "",
@@ -343,6 +385,12 @@ export default function SettingsPage() {
 
       const updatedBusiness: Business = response.data.business;
 
+      setBusinessForm((current) => ({
+        ...current,
+        state: updatedBusiness.state || current.state,
+        state_code: updatedBusiness.state_code || current.state_code,
+      }));
+
       setLogoUrl(
         assetUrl(updatedBusiness.logo_path || updatedBusiness.logo_url),
       );
@@ -429,6 +477,21 @@ export default function SettingsPage() {
       ...current,
       [field]: value,
     }));
+  };
+
+  const handleStateChange = (stateCode: string) => {
+    const selectedState = indianStates.find(
+      (state) => state.code === stateCode,
+    );
+
+    setBusinessForm((current) => ({
+      ...current,
+      state_code: stateCode,
+      state: selectedState?.name || "",
+    }));
+
+    setBusinessError("");
+    setBusinessMessage("");
   };
 
   if (loading) {
@@ -591,21 +654,38 @@ export default function SettingsPage() {
                 value={businessForm.city}
                 onChange={(value) => updateBusinessField("city", value)}
               />
-              <InputField
-                label="State"
-                value={businessForm.state}
-                onChange={(value) => updateBusinessField("state", value)}
-              />
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  State *
+                </label>
+                <select
+                  required
+                  value={businessForm.state_code}
+                  onChange={(event) => handleStateChange(event.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="">Select state</option>
+                  {indianStates.map((state) => (
+                    <option key={state.code} value={state.code}>
+                      {state.name} ({state.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <InputField
                 label="Country"
                 value={businessForm.country}
                 onChange={(value) => updateBusinessField("country", value)}
               />
+
               <InputField
                 label="Postal code"
                 value={businessForm.postal_code}
                 onChange={(value) => updateBusinessField("postal_code", value)}
               />
+
               <InputField
                 label="GSTIN"
                 value={businessForm.gstin}
@@ -614,6 +694,7 @@ export default function SettingsPage() {
                   updateBusinessField("gstin", value.toUpperCase())
                 }
               />
+
               <InputField
                 label="Currency"
                 value={businessForm.currency}
@@ -622,6 +703,7 @@ export default function SettingsPage() {
                   updateBusinessField("currency", value.toUpperCase())
                 }
               />
+
               <InputField
                 label="Invoice prefix"
                 value={businessForm.invoice_prefix}
@@ -629,6 +711,7 @@ export default function SettingsPage() {
                   updateBusinessField("invoice_prefix", value)
                 }
               />
+
               <InputField
                 label="Quotation prefix"
                 value={businessForm.quotation_prefix}
@@ -636,6 +719,7 @@ export default function SettingsPage() {
                   updateBusinessField("quotation_prefix", value)
                 }
               />
+
               <div className="sm:col-span-2">
                 <InputField
                   label="Timezone"
@@ -647,12 +731,21 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+
+            <p className="text-xs text-slate-500">
+              Your business state is used to determine whether GST is
+              calculated as CGST + SGST or IGST.
+            </p>
           </div>
 
           <div className="flex justify-end border-t border-slate-100 bg-slate-50 px-6 py-4">
             <button
               type="submit"
-              disabled={savingBusiness || !businessForm.name.trim()}
+              disabled={
+                savingBusiness ||
+                !businessForm.name.trim() ||
+                !businessForm.state_code
+              }
               className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {savingBusiness ? (

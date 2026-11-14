@@ -12,12 +12,54 @@ type CustomerFormModalProps = {
   onSave: (payload: CustomerPayload) => Promise<void>;
 };
 
+const indianStates = [
+  { code: "01", name: "Jammu and Kashmir" },
+  { code: "02", name: "Himachal Pradesh" },
+  { code: "03", name: "Punjab" },
+  { code: "04", name: "Chandigarh" },
+  { code: "05", name: "Uttarakhand" },
+  { code: "06", name: "Haryana" },
+  { code: "07", name: "Delhi" },
+  { code: "08", name: "Rajasthan" },
+  { code: "09", name: "Uttar Pradesh" },
+  { code: "10", name: "Bihar" },
+  { code: "11", name: "Sikkim" },
+  { code: "12", name: "Arunachal Pradesh" },
+  { code: "13", name: "Nagaland" },
+  { code: "14", name: "Manipur" },
+  { code: "15", name: "Mizoram" },
+  { code: "16", name: "Tripura" },
+  { code: "17", name: "Meghalaya" },
+  { code: "18", name: "Assam" },
+  { code: "19", name: "West Bengal" },
+  { code: "20", name: "Jharkhand" },
+  { code: "21", name: "Odisha" },
+  { code: "22", name: "Chhattisgarh" },
+  { code: "23", name: "Madhya Pradesh" },
+  { code: "24", name: "Gujarat" },
+  { code: "26", name: "Dadra and Nagar Haveli and Daman and Diu" },
+  { code: "27", name: "Maharashtra" },
+  { code: "28", name: "Andhra Pradesh" },
+  { code: "29", name: "Karnataka" },
+  { code: "30", name: "Goa" },
+  { code: "31", name: "Lakshadweep" },
+  { code: "32", name: "Kerala" },
+  { code: "33", name: "Tamil Nadu" },
+  { code: "34", name: "Puducherry" },
+  { code: "35", name: "Andaman and Nicobar Islands" },
+  { code: "36", name: "Telangana" },
+  { code: "37", name: "Andhra Pradesh (New)" },
+  { code: "38", name: "Ladakh" },
+];
+
 const emptyForm: CustomerPayload = {
   name: "",
   email: "",
   phone: "",
   company_name: "",
   gstin: "",
+  state: "",
+  state_code: "",
   billing_address: "",
   shipping_address: "",
   notes: "",
@@ -45,12 +87,14 @@ export default function CustomerFormModal({
         phone: customer.phone || "",
         company_name: customer.company_name || "",
         gstin: customer.gstin || "",
+        state: customer.state || "",
+        state_code: customer.state_code || "",
         billing_address: customer.billing_address || "",
         shipping_address: customer.shipping_address || "",
         notes: customer.notes || "",
       });
     } else {
-      setForm(emptyForm);
+      setForm({ ...emptyForm });
     }
 
     setGstinTouched(false);
@@ -63,9 +107,23 @@ export default function CustomerFormModal({
       [field]: value,
     }));
 
-    if (field === "gstin") {
+    if (field === "gstin" || field === "state_code") {
       setGstinServerError("");
     }
+  };
+
+  const handleStateChange = (stateCode: string) => {
+    const selectedState = indianStates.find(
+      (state) => state.code === stateCode
+    );
+
+    setForm((current) => ({
+      ...current,
+      state_code: stateCode,
+      state: selectedState?.name || "",
+    }));
+
+    setGstinServerError("");
   };
 
   const gstin = form.gstin.trim().toUpperCase();
@@ -77,7 +135,11 @@ export default function CustomerFormModal({
         ? "GSTIN must contain exactly 15 characters."
         : !gstinRegex.test(gstin)
           ? "Enter a valid GSTIN format."
-          : "";
+          : !form.state_code
+            ? "Select the customer state before entering GSTIN."
+            : gstin.substring(0, 2) !== form.state_code
+              ? "GSTIN state code does not match the selected state."
+              : "";
 
   const hasGstinError = Boolean(
     gstinServerError || (gstinTouched && gstinError)
@@ -101,6 +163,8 @@ export default function CustomerFormModal({
         phone: form.phone.trim(),
         company_name: form.company_name.trim(),
         gstin,
+        state: form.state.trim(),
+        state_code: form.state_code,
       });
     } catch (err) {
       const apiError = err as {
@@ -196,6 +260,25 @@ export default function CustomerFormModal({
               </div>
 
               <div>
+                <label className={labelClass}>State</label>
+                <select
+                  value={form.state_code}
+                  onChange={(e) => handleStateChange(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Select customer state</option>
+                  {indianStates.map((state) => (
+                    <option key={state.code} value={state.code}>
+                      {state.name} ({state.code})
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Used to help select Place of Supply while creating invoices.
+                </p>
+              </div>
+
+              <div className="sm:col-span-2">
                 <label className={labelClass}>GSTIN</label>
                 <input
                   maxLength={15}
@@ -227,12 +310,12 @@ export default function CustomerFormModal({
                       <>
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
                         <span className="text-emerald-600">
-                          GSTIN format looks valid.
+                          GSTIN format and state code look valid.
                         </span>
                       </>
                     ) : (
                       <span className="text-slate-500">
-                        Enter a valid 15-character GSTIN. Optional field.
+                        Optional. If entered, its state code must match the selected state.
                       </span>
                     )}
                   </div>
