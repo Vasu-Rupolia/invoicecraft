@@ -8,6 +8,11 @@ import {
   Save,
   Loader2,
   Camera,
+  Mail,
+  Server,
+  ShieldCheck,
+  Wifi,
+  Trash,
 } from "lucide-react";
 
 import api from "../services/api";
@@ -36,6 +41,21 @@ type BusinessForm = {
 type ProfileForm = {
   name: string;
   email: string;
+};
+
+type SmtpForm = {
+  smtp_host: string;
+  smtp_port: string;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_encryption: string;
+  smtp_from_address: string;
+  smtp_from_name: string;
+};
+
+type SmtpStatus = {
+  has_password: boolean;
+  is_configured: boolean;
 };
 
 const indianStates = [
@@ -94,6 +114,16 @@ const emptyBusinessForm: BusinessForm = {
   timezone: "Asia/Kolkata",
   invoice_prefix: "INV",
   quotation_prefix: "QUO",
+};
+
+const emptySmtpForm: SmtpForm = {
+  smtp_host: "",
+  smtp_port: "587",
+  smtp_username: "",
+  smtp_password: "",
+  smtp_encryption: "tls",
+  smtp_from_address: "",
+  smtp_from_name: "",
 };
 
 function assetUrl(path?: string | null): string | null {
@@ -182,6 +212,12 @@ export default function SettingsPage() {
   const [businessForm, setBusinessForm] =
     useState<BusinessForm>(emptyBusinessForm);
 
+  const [smtpForm, setSmtpForm] = useState<SmtpForm>(emptySmtpForm);
+  const [smtpStatus, setSmtpStatus] = useState<SmtpStatus>({
+    has_password: false,
+    is_configured: false,
+  });
+
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
 
@@ -202,10 +238,18 @@ export default function SettingsPage() {
   const [removingAvatar, setRemovingAvatar] = useState(false);
   const [removingLogo, setRemovingLogo] = useState(false);
 
+  const [loadingSmtp, setLoadingSmtp] = useState(false);
+  const [savingSmtp, setSavingSmtp] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [removingSmtp, setRemovingSmtp] = useState(false);
+
   const [profileMessage, setProfileMessage] = useState("");
   const [businessMessage, setBusinessMessage] = useState("");
+  const [smtpMessage, setSmtpMessage] = useState("");
+
   const [profileError, setProfileError] = useState("");
   const [businessError, setBusinessError] = useState("");
+  const [smtpError, setSmtpError] = useState("");
 
   useEffect(() => {
     setProfileForm({
@@ -270,6 +314,57 @@ export default function SettingsPage() {
     };
 
     loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBusiness?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSmtpSettings = async () => {
+      if (!activeBusiness?.id) return;
+
+      setLoadingSmtp(true);
+      setSmtpError("");
+      setSmtpMessage("");
+
+      try {
+        const response = await api.get(
+          `/businesses/${activeBusiness.id}/smtp`,
+        );
+
+        if (cancelled) return;
+
+        const smtp = response.data.smtp;
+
+        setSmtpForm({
+          smtp_host: smtp.smtp_host || "",
+          smtp_port: String(smtp.smtp_port || 587),
+          smtp_username: smtp.smtp_username || "",
+          smtp_password: "",
+          smtp_encryption: smtp.smtp_encryption || "tls",
+          smtp_from_address: smtp.smtp_from_address || "",
+          smtp_from_name: smtp.smtp_from_name || "",
+        });
+
+        setSmtpStatus({
+          has_password: Boolean(smtp.has_password),
+          is_configured: Boolean(smtp.is_configured),
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setSmtpError(getErrorMessage(error));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingSmtp(false);
+        }
+      }
+    };
+
+    loadSmtpSettings();
 
     return () => {
       cancelled = true;
@@ -479,6 +574,19 @@ export default function SettingsPage() {
     }));
   };
 
+  const updateSmtpField = (
+    field: keyof SmtpForm,
+    value: string,
+  ) => {
+    setSmtpForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+
+    setSmtpError("");
+    setSmtpMessage("");
+  };
+
   const handleStateChange = (stateCode: string) => {
     const selectedState = indianStates.find(
       (state) => state.code === stateCode,
@@ -492,6 +600,129 @@ export default function SettingsPage() {
 
     setBusinessError("");
     setBusinessMessage("");
+  };
+
+  const handleSmtpSave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!activeBusiness?.id) return;
+
+    setSavingSmtp(true);
+    setSmtpError("");
+    setSmtpMessage("");
+
+    try {
+      const payload: Record<string, string | number> = {
+        smtp_host: smtpForm.smtp_host.trim(),
+        smtp_port: Number(smtpForm.smtp_port),
+        smtp_username: smtpForm.smtp_username.trim(),
+        smtp_encryption: smtpForm.smtp_encryption,
+        smtp_from_address: smtpForm.smtp_from_address.trim(),
+        smtp_from_name: smtpForm.smtp_from_name.trim(),
+      };
+
+      // Blank password means keep the existing SMTP password.
+      if (smtpForm.smtp_password.trim()) {
+        payload.smtp_password = smtpForm.smtp_password;
+      }
+
+      const response = await api.put(
+        `/businesses/${activeBusiness.id}/smtp`,
+        payload,
+      );
+
+      const smtp = response.data.smtp;
+
+      setSmtpForm((current) => ({
+        ...current,
+        smtp_password: "",
+        smtp_host: smtp.smtp_host || current.smtp_host,
+        smtp_port: String(smtp.smtp_port || current.smtp_port),
+        smtp_username: smtp.smtp_username || current.smtp_username,
+        smtp_encryption: smtp.smtp_encryption || current.smtp_encryption,
+        smtp_from_address:
+          smtp.smtp_from_address || current.smtp_from_address,
+        smtp_from_name: smtp.smtp_from_name || current.smtp_from_name,
+      }));
+
+      setSmtpStatus({
+        has_password: Boolean(smtp.has_password),
+        is_configured: Boolean(smtp.is_configured),
+      });
+
+      setSmtpMessage(response.data.message || "SMTP settings saved successfully.");
+    } catch (error) {
+      setSmtpError(getErrorMessage(error));
+    } finally {
+      setSavingSmtp(false);
+    }
+  };
+
+  const handleSmtpTest = async () => {
+    if (!activeBusiness?.id) return;
+
+    setTestingSmtp(true);
+    setSmtpError("");
+    setSmtpMessage("");
+
+    try {
+      const response = await api.post(
+        `/businesses/${activeBusiness.id}/smtp/test`,
+      );
+
+      setSmtpMessage(
+        response.data.message || "SMTP connection successful.",
+      );
+    } catch (error) {
+      setSmtpError(getErrorMessage(error));
+    } finally {
+      setTestingSmtp(false);
+    }
+  };
+
+  const handleRemoveSmtp = async () => {
+    if (!activeBusiness?.id) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to remove this business SMTP configuration?",
+    );
+
+    if (!confirmed) return;
+
+    setRemovingSmtp(true);
+    setSmtpError("");
+    setSmtpMessage("");
+
+    try {
+      const response = await api.delete(
+        `/businesses/${activeBusiness.id}/smtp`,
+      );
+
+      const smtp = response.data.smtp;
+
+      setSmtpForm({
+        smtp_host: smtp.smtp_host || "",
+        smtp_port: String(smtp.smtp_port || 587),
+        smtp_username: smtp.smtp_username || "",
+        smtp_password: "",
+        smtp_encryption: smtp.smtp_encryption || "tls",
+        smtp_from_address: smtp.smtp_from_address || "",
+        smtp_from_name: smtp.smtp_from_name || "",
+      });
+
+      setSmtpStatus({
+        has_password: Boolean(smtp.has_password),
+        is_configured: Boolean(smtp.is_configured),
+      });
+
+      setSmtpMessage(
+        response.data.message || "SMTP settings removed successfully.",
+      );
+    } catch (error) {
+      setSmtpError(getErrorMessage(error));
+    } finally {
+      setRemovingSmtp(false);
+    }
   };
 
   if (loading) {
@@ -754,6 +985,250 @@ export default function SettingsPage() {
                 <Save size={16} />
               )}
               Save business profile
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* SMTP settings */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <Mail size={20} />
+            </div>
+            <div>
+              <h2 className="font-semibold text-slate-900">
+                Email / SMTP settings
+              </h2>
+              <p className="text-sm text-slate-500">
+                Configure email delivery for invoices and quotations.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                smtpStatus.is_configured ? "bg-emerald-500" : "bg-slate-300"
+              }`}
+            />
+            <span className="text-sm font-medium text-slate-600">
+              {smtpStatus.is_configured ? "Configured" : "Not configured"}
+            </span>
+          </div>
+        </div>
+
+        <form onSubmit={handleSmtpSave}>
+          <div className="space-y-6 p-6">
+            {smtpError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {smtpError}
+              </div>
+            )}
+
+            {smtpMessage && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {smtpMessage}
+              </div>
+            )}
+
+            {loadingSmtp ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+                <span className="ml-3 text-sm text-slate-500">
+                  Loading SMTP settings...
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                  SMTP credentials are stored securely for this business.
+                  The saved password is never displayed. Leave the password
+                  field blank to keep your existing password.
+                </div>
+
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <Server size={17} className="text-indigo-600" />
+                  SMTP server
+                </div>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <InputField
+                    label="SMTP Host *"
+                    value={smtpForm.smtp_host}
+                    onChange={(value) => updateSmtpField("smtp_host", value)}
+                    placeholder="smtp.gmail.com"
+                  />
+
+                  <InputField
+                    label="SMTP Port *"
+                    type="number"
+                    value={smtpForm.smtp_port}
+                    onChange={(value) => updateSmtpField("smtp_port", value)}
+                    placeholder="587"
+                  />
+
+                  <InputField
+                    label="SMTP Username *"
+                    value={smtpForm.smtp_username}
+                    onChange={(value) =>
+                      updateSmtpField("smtp_username", value)
+                    }
+                    placeholder="your-email@gmail.com"
+                  />
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      SMTP Password
+                      {smtpStatus.has_password && (
+                        <span className="ml-2 text-xs font-normal text-emerald-600">
+                          Password saved
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={smtpForm.smtp_password}
+                      onChange={(event) =>
+                        updateSmtpField("smtp_password", event.target.value)
+                      }
+                      placeholder={
+                        smtpStatus.has_password
+                          ? "Leave blank to keep existing password"
+                          : "Enter SMTP password"
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Encryption *
+                    </label>
+                    <select
+                      value={smtpForm.smtp_encryption}
+                      onChange={(event) =>
+                        updateSmtpField("smtp_encryption", event.target.value)
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+                      <option value="tls">TLS / STARTTLS</option>
+                      <option value="ssl">SSL</option>
+                      <option value="none">None</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-5">
+                  <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <Mail size={17} className="text-indigo-600" />
+                    Sender details
+                  </div>
+
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <InputField
+                      label="From Email *"
+                      type="email"
+                      value={smtpForm.smtp_from_address}
+                      onChange={(value) =>
+                        updateSmtpField("smtp_from_address", value)
+                      }
+                      placeholder="billing@yourbusiness.com"
+                    />
+
+                    <InputField
+                      label="From Name *"
+                      value={smtpForm.smtp_from_name}
+                      onChange={(value) =>
+                        updateSmtpField("smtp_from_name", value)
+                      }
+                      placeholder="Your Business Name"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck
+                      size={19}
+                      className="mt-0.5 shrink-0 text-emerald-600"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Secure business email configuration
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        These SMTP settings belong to the currently selected
+                        business. Only an authorized business owner can
+                        manage this configuration.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleSmtpTest}
+                disabled={
+                  loadingSmtp ||
+                  testingSmtp ||
+                  savingSmtp ||
+                  !smtpStatus.is_configured
+                }
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {testingSmtp ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Wifi size={16} />
+                )}
+                Test connection
+              </button>
+
+              {smtpStatus.is_configured && (
+                <button
+                  type="button"
+                  onClick={handleRemoveSmtp}
+                  disabled={removingSmtp || savingSmtp || testingSmtp}
+                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {removingSmtp ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Trash size={16} />
+                  )}
+                  Remove SMTP
+                </button>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={
+                loadingSmtp ||
+                savingSmtp ||
+                testingSmtp ||
+                !smtpForm.smtp_host.trim() ||
+                !smtpForm.smtp_port ||
+                !smtpForm.smtp_username.trim() ||
+                !smtpForm.smtp_from_address.trim() ||
+                !smtpForm.smtp_from_name.trim()
+              }
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingSmtp ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Save size={16} />
+              )}
+              Save SMTP settings
             </button>
           </div>
         </form>

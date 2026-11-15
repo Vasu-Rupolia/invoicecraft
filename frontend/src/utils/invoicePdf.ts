@@ -767,3 +767,12 @@ export const printInvoicePdf = async (
     throw error;
   }
 };
+
+export const generateInvoicePdfBlob = async (
+  invoice: Invoice,
+  business: Business | null,
+): Promise<Blob> => {
+  const doc = await createInvoicePdf(invoice, business);
+
+  return doc.output("blob");
+};

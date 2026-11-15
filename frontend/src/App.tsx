@@ -12,8 +12,10 @@ import CustomersPage from "./pages/CustomersPage";
 import InvoicesPage from "./pages/InvoicesPage";
 import QuotationsPage from "./pages/QuotationsPage";
 import SettingsPage from "./pages/SettingsPage";
+import GuidePage from "./pages/GuidePage";
 
 import AppLayout from "./components/layout/AppLayout";
+import ReportsPage from "./pages/ReportsPage";
 
 function LoadingScreen() {
   return (
@@ -100,6 +102,8 @@ function AppRoutes() {
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/quotations" element={<QuotationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/guide" element={<GuidePage />} />
+        <Route path="/reports" element={<ReportsPage />} />
       </Route>
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
