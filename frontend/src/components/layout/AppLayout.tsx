@@ -15,6 +15,8 @@ import {
   Loader2,
   Settings,
   UserRound,
+  BookOpen,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useBusiness } from "../../context/BusinessContext";
@@ -90,6 +92,8 @@ export default function AppLayout() {
     { label: "Quotations", path: "/quotations", icon: ReceiptText },
     { label: "Customers", path: "/customers", icon: Users },
     { label: "Settings", path: "/settings", icon: Settings },
+    { label: "Help & Guide", path: "/guide", icon: BookOpen },
+    { label: "Reports", path: "/reports", icon: BarChart3 },
   ];
 
   // Supports both avatar_url and avatar_path.
@@ -347,6 +351,18 @@ export default function AppLayout() {
               )}
             </div>
           </div>
+
+          <Link
+            to="/guide"
+            onClick={() => {
+                setShowBusinessMenu(false);
+                setShowProfileMenu(false);
+            }}
+            className="relative hidden items-center gap-2 rounded-xl border border-white/20 bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 px-4 py-2.5 text-sm font-bold text-white shadow-[0_0_18px_rgba(99,102,241,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(139,92,246,0.65)] sm:inline-flex"
+            >
+            <BookOpen size={17} />
+            Getting Started
+          </Link>
 
           {/* User profile */}
           <div className="relative">

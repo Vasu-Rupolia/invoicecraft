@@ -9,6 +9,9 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\QuotationController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\BusinessSmtpController;
+use App\Http\Controllers\Api\DocumentEmailController;
+use App\Http\Controllers\Api\ReportsController;
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
@@ -55,6 +58,14 @@ Route::middleware('auth:sanctum')->group(function () {
         '/businesses/{businessId}/dashboard',
         [DashboardController::class, 'index']
     );
+
+    // Business SMTP settings
+    Route::prefix('businesses/{businessId}/smtp')->group(function () {
+        Route::get('/', [BusinessSmtpController::class, 'show']);
+        Route::put('/', [BusinessSmtpController::class, 'update']);
+        Route::post('/test', [BusinessSmtpController::class, 'testConnection']);
+        Route::delete('/', [BusinessSmtpController::class, 'destroy']);
+    });
 
     // Customers
     Route::prefix('businesses/{businessId}/customers')->group(function () {
@@ -105,4 +116,31 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{quotationId}', [QuotationController::class, 'update']);
         Route::delete('/{quotationId}', [QuotationController::class, 'destroy']);
     });
+
+    // Document email
+    Route::get(
+        '/businesses/{businessId}/email-logs',
+        [DocumentEmailController::class, 'index']
+    );
+
+    Route::post(
+        '/businesses/{businessId}/invoices/{invoiceId}/email',
+        [DocumentEmailController::class, 'sendInvoice']
+    );
+
+    Route::post(
+        '/businesses/{businessId}/quotations/{quotationId}/email',
+        [DocumentEmailController::class, 'sendQuotation']
+    );
+
+    Route::post(
+        '/businesses/{businessId}/email-logs/{emailLogId}/resend',
+        [DocumentEmailController::class, 'resend']
+    );
+
+    // Reports
+    Route::get(
+        '/businesses/{businessId}/reports',
+        [ReportsController::class, 'index']
+    );
 });

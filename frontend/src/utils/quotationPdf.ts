@@ -804,3 +804,12 @@ export const printQuotationPdf = async (
     throw error;
   }
 };
+
+export const generateQuotationPdfBlob = async (
+  quotation: Quotation,
+  business: Business | null,
+): Promise<Blob> => {
+  const doc = await createQuotationPdf(quotation, business);
+
+  return doc.output("blob");
+};

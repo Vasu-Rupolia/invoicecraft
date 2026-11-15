@@ -1,6 +1,13 @@
 import { useState } from "react";
-import { Download, Printer, LoaderCircle } from "lucide-react";
+import {
+  Download,
+  Printer,
+  LoaderCircle,
+  Mail,
+} from "lucide-react";
+
 import type { Business, Invoice } from "../../types";
+import DocumentEmailModal from "../documents/DocumentEmailModal";
 
 type Props = {
   invoice: Invoice;
@@ -14,6 +21,9 @@ export default function InvoicePdfActions({
   const [loading, setLoading] = useState<"download" | "print" | null>(
     null,
   );
+  const [showEmailModal, setShowEmailModal] = useState(false);
+
+  const businessId = Number(business?.id);
 
   const handleAction = async (action: "download" | "print") => {
     try {
@@ -37,6 +47,12 @@ export default function InvoicePdfActions({
     } finally {
       setLoading(null);
     }
+  };
+
+  const generatePdf = async (): Promise<Blob> => {
+    const pdfUtils = await import("../../utils/invoicePdf");
+
+    return pdfUtils.generateInvoicePdfBlob(invoice, business);
   };
 
   return (
@@ -68,6 +84,29 @@ export default function InvoicePdfActions({
         )}
         Print
       </button>
+
+      <button
+        type="button"
+        onClick={() => setShowEmailModal(true)}
+        disabled={!businessId || loading !== null}
+        className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Mail className="h-4 w-4" />
+        Send Email
+      </button>
+
+      {showEmailModal && businessId > 0 && (
+        <DocumentEmailModal
+          businessId={businessId}
+          businessName={business?.name || "Business"}
+          documentType="invoice"
+          documentId={invoice.id}
+          documentNumber={invoice.invoice_number}
+          customerEmail={invoice.customer_email}
+          generatePdf={generatePdf}
+          onClose={() => setShowEmailModal(false)}
+        />
+      )}
     </>
   );
 }

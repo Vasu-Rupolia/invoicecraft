@@ -28,6 +28,17 @@ class BusinessProfile extends Model
         'quotation_prefix',
         'next_quotation_number',
         'timezone',
+        'smtp_host',
+        'smtp_port',
+        'smtp_username',
+        'smtp_password',
+        'smtp_encryption',
+        'smtp_from_address',
+        'smtp_from_name',
+    ];
+
+    protected $hidden = [
+        'smtp_password',
     ];
 
     protected $appends = [
@@ -39,6 +50,8 @@ class BusinessProfile extends Model
         return [
             'next_invoice_number' => 'integer',
             'next_quotation_number' => 'integer',
+            'smtp_port' => 'integer',
+            'smtp_password' => 'encrypted',
         ];
     }
 
